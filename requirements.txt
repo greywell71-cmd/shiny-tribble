@@ -1,8 +1,8 @@
+pyTelegramBotAPI
 ccxt
 pandas
 pandas_ta
-pyTelegramBotAPI
-requests
-flask
 mplfinance
-matplotlib
+flask
+requests
+gunicorn
