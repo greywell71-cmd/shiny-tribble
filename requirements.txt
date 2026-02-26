@@ -1,3 +1,5 @@
-ccxt
-https://github.com/twopirllc/pandas-ta/archive/refs/heads/master.zip
+ccxt==4.2.34
+pandas==2.0.3
+pandas_ta==0.3.14b0
+pyTelegramBotAPI
 schedule
