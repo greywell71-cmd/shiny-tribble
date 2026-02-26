@@ -27,7 +27,11 @@ TOKEN = '8758242353:AAFt4tlgTrZBikosPCY19y6MAtPlFeprxO0'
 chat_id = '737143225'
 bot = telebot.TeleBot(TOKEN)
 exchange = ccxt.binance()
-symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']
+symbols = [
+    'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 
+    'ADA/USDT', 'DOT/USDT', 'MATIC/USDT', 'LINK/USDT', 
+    'LTC/USDT', 'AVAX/USDT', 'DOGE/USDT', 'TRX/USDT'
+]
 
 # 3. Логика сигналов
 def get_signal(symbol):
