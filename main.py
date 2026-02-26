@@ -66,9 +66,9 @@ def analyze_market(symbol):
         last_prices[symbol] = current_price
 
         # --- СИГНАЛЫ RSI ---
-        if last_rsi > 70:
+        if last_rsi > 50:
             report += f"🚨 СИГНАЛ ПРОДАЖИ: {symbol}\nRSI: {round(last_rsi, 2)}\n"
-        elif last_rsi < 30:
+        elif last_rsi < 50:
             report += f"✅ СИГНАЛ ПОКУПКИ: {symbol}\nRSI: {round(last_rsi, 2)}\n"
 
         if report:
