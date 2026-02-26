@@ -10,20 +10,15 @@ import traceback
 from flask import Flask
 from threading import Thread
 
-# 1. Веб-сервер для предотвращения "засыпания" на Render
+# 1. Настройка Flask (WSGI-интерфейс)
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot Chart v10.0 LIVE - Monitoring Markets"
-
-def run_web_server():
-    # Render автоматически назначает порт через переменную окружения PORT
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    return "Bot Chart v11.0 LIVE - WSGI Mode Active"
 
 # 2. Конфигурация
-TOKEN = '8758242353:AAGh4-1UM8MCAOjTlsdh62PXs6TRInLqe60'  # ЗАМЕНИТЕ ЭТО
+TOKEN = '8758242353:AAECWJLY99i-QcZfU3iXmMfcWC8-PQDCHeY'
 CHAT_ID = '737143225'
 
 bot = telebot.TeleBot(TOKEN)
@@ -31,13 +26,13 @@ exchange = ccxt.binance()
 symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT', 'DOT/USDT', 'MATIC/USDT']
 sent_signals = {}
 
-# 3. Вспомогательные функции
+# 3. Функции анализа и графиков
 def get_fear_greed_index():
     try:
         r = requests.get('https://api.alternative.me/fng/', timeout=5).json()
         return f"📊 Fear & Greed Index: {r['data'][0]['value']} ({r['data'][0]['value_classification']})"
     except:
-        return "📊 Index N/A"
+        return "📊 Fear & Greed Index: N/A"
 
 def create_chart(symbol, df):
     plot_df = df.tail(45).copy()
@@ -68,7 +63,6 @@ def analyze_market():
             
             if signal:
                 now = time.time()
-                # Анти-спам: 1 сигнал в 2 часа для одной монеты
                 if symbol in sent_signals and (now - sent_signals[symbol]) < 7200:
                     continue
                 
@@ -78,14 +72,15 @@ def analyze_market():
                 
                 with open(chart_file, 'rb') as photo:
                     bot.send_photo(CHAT_ID, photo, caption=caption)
-                os.remove(chart_file)
+                if os.path.exists(chart_file):
+                    os.remove(chart_file)
         except Exception as e:
-            print(f"Ошибка анализа {symbol}: {e}")
+            print(f"Error analyzing {symbol}: {e}")
 
-# 4. Обработчики команд
+# 4. Обработчики команд (Формат как на вашем скриншоте)
 @bot.message_handler(commands=['status'])
 def status(m):
-    bot.reply_to(m, f"✅ Bot is Online\nMonitoring: {len(symbols)} pairs\n{get_fear_greed_index()}")
+    bot.reply_to(m, f"✅ Bot is Online\nMonitoring: {', '.join(symbols)}\n{get_fear_greed_index()}")
 
 @bot.message_handler(commands=['report'])
 def report(m):
@@ -95,12 +90,12 @@ def report(m):
             p = exchange.fetch_ticker(s)['last']
             bars = exchange.fetch_ohlcv(s, timeframe='1h', limit=50)
             df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            rsi = round(ta.rsi(df['close'], length=14).iloc[-1], 1)
-            res += f"🔹 {s}: ${p} (RSI: {rsi})\n"
+            rsi_val = round(ta.rsi(df['close'], length=14).iloc[-1], 1)
+            res += f"🔹 {s}: ${p} (RSI: {rsi_val})\n"
         except: continue
     bot.send_message(m.chat.id, res, parse_mode="Markdown")
 
-# 5. Главные циклы
+# 5. Потоки для работы под управлением Gunicorn
 def bot_polling():
     while True:
         try:
@@ -113,25 +108,25 @@ def bot_polling():
 
 def market_loop():
     print("📈 Market Monitor Started")
-    # Уведомление в ТГ о запуске (опционально)
-    try: bot.send_message(CHAT_ID, "🚀 Бот запущен и мониторит рынок!")
-    except: pass
-
     while True:
         try:
             analyze_market()
-            # Проверка каждые 10 минут, чтобы не нагружать систему
-            time.sleep(600)
+            time.sleep(600) # Интервал 10 минут
         except Exception as e:
-            error_stack = traceback.format_exc()
-            print(f"Критическая ошибка:\n{error_stack}")
+            print(f"Loop error: {traceback.format_exc()}")
             time.sleep(60)
 
+# ЭТА ЧАСТЬ ЗАПУСКАЕТ ПОТОКИ ПРИ ИМПОРТЕ МОДУЛЯ GUNICORN-ОМ
+def start_threads():
+    t1 = Thread(target=bot_polling, daemon=True)
+    t1.start()
+    t2 = Thread(target=market_loop, daemon=True)
+    t2.start()
+
+start_threads()
+
 if __name__ == "__main__":
-    # Запуск сервера
-    Thread(target=run_web_server, daemon=True).start()
-    # Запуск бота
-    Thread(target=bot_polling, daemon=True).start()
-    # Запуск анализатора в основном потоке
-    market_loop()
-            
+    # Локальный запуск (если не через gunicorn)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+    
