@@ -62,4 +62,4 @@ if __name__ == "__main__":
     print("💎 Бот-Терминатор v3.0 запущен!")
     while True:
         check_market()
-        time.sleep(60
+        time.sleep(60)
