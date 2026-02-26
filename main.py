@@ -18,7 +18,7 @@ def run_web_server():
     app.run(host='0.0.0.0', port=port)
 
 # 2. Настройки (ВСТАВЬ СВОИ ДАННЫЕ)
-TOKEN = '8758242353:AAFt4tlgTrZBikosPCY19y6MAtPlFeprxO0'
+TOKEN = '8758242353:AAHTOpRSy5kBt5ExNmFhaOmL3opAcT7GaOk'
 chat_id = '737143225'
 bot = telebot.TeleBot(TOKEN)
 exchange = ccxt.binance()
