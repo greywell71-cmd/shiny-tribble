@@ -2,5 +2,7 @@ ccxt
 pandas
 pandas_ta
 pyTelegramBotAPI
-schedule
+requests
 flask
+mplfinance
+matplotlib
