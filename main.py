@@ -78,17 +78,25 @@ def analyze_market(symbol):
         print(f"Ошибка анализа {symbol}: {e}")
     return None
 
+# Словарь для хранения времени последнего отправленного сигнала
+sent_signals = {}
+
 def main_logic():
     print("💎 Запуск основного цикла анализа...")
-    # Запускаем прослушку команд в фоне
     Thread(target=bot.polling, kwargs={'none_stop': True}).start()
     
     while True:
         for symbol in symbols:
             signal = analyze_market(symbol)
             if signal:
-                bot.send_message(chat_id, signal)
-        time.sleep(60) # Проверка каждую минуту
+                # Создаем уникальный ключ для пары и типа сигнала (например, BTC/USDT_BUY)
+                # Это предотвратит повтор сообщения каждую минуту
+                current_time = time.time()
+                if symbol not in sent_signals or (current_time - sent_signals[symbol]) > 3600:
+                    bot.send_message(chat_id, signal)
+                    sent_signals[symbol] = current_time # Запоминаем время отправки на 1 час
+        time.sleep(60)
+        
 
 if __name__ == "__main__":
     # Запуск сервера и бота
