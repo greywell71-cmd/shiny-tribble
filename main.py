@@ -1,6 +1,18 @@
 
 import ccxt, pandas_ta as ta, requests, pandas as pd, time
+app = Flask('')
+@app.route('/')
+def home():
+    return "Бот запущен и работает!"
 
+def run_web_server():
+    # Render передает порт в переменную окружения PORT
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run_web_server)
+    t.start()
 TOKEN = "8758242353:AAFt4tlgTrZBikosPCY19y6MAtPlFeprxO0"
 CHAT_ID = "737143225"
 SYMBOLS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'LTC/USDT']
