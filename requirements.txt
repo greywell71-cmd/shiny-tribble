@@ -1,4 +1,3 @@
 ccxt
-pandas_ta
-requests
-pandas
+https://github.com/twopirllc/pandas-ta/archive/refs/heads/master.zip
+schedule
