@@ -18,7 +18,7 @@ def run_web_server():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-# 2. Configuration (REPLACE THESE)
+# 2. Configuration
 TOKEN = '8758242353:AAHTOpRSy5kBt5ExNmFhaOmL3opAcT7GaOk'
 chat_id = '737143225'
 
@@ -55,18 +55,17 @@ def analyze_market(symbol):
         current_vol = df['volume'].iloc[-1]
         vol_spike = "💎 High Volume!" if current_vol > (avg_vol * 2) else "⚙️ Normal Vol"
 
-        report = ""
         if last_rsi < 30:
             report = f"✅ BUY: {symbol}\nPrice: {current_price}\nRSI: {round(last_rsi, 2)}\nVol: {vol_spike}\n"
         elif last_rsi > 70:
             report = f"🚨 SELL: {symbol}\nPrice: {current_price}\nRSI: {round(last_rsi, 2)}\nVol: {vol_spike}\n"
+        else: return None
 
-        if report:
-            current_time = time.time()
-            if symbol in sent_signals and (current_time - sent_signals[symbol]) < 3600:
-                return None
-            sent_signals[symbol] = current_time
-            return report + get_fear_greed()
+        current_time = time.time()
+        if symbol in sent_signals and (current_time - sent_signals[symbol]) < 3600:
+            return None
+        sent_signals[symbol] = current_time
+        return report + get_fear_greed()
     except: return None
 
 # --- Commands ---
@@ -99,14 +98,20 @@ def add_symbol(message):
         if new_sym not in symbols:
             symbols.append(new_sym)
             bot.reply_to(message, f"✅ {new_sym} added!")
-        else:
-            bot.reply_to(message, "Already exists")
-    except:
-        bot.reply_to(message, "Use: /add BTC/USDT")
+        else: bot.reply_to(message, "Already exists")
+    except: bot.reply_to(message, "Use: /add BTC/USDT")
+
+def start_polling():
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=0, timeout=20)
+        except Exception as e:
+            print(f"Polling error: {e}")
+            time.sleep(10)
 
 def main_logic():
     print("💎 Starting analysis...")
-    Thread(target=bot.polling, kwargs={'none_stop': True}).start()
+    Thread(target=start_polling).start()
     while True:
         for symbol in symbols:
             signal = analyze_market(symbol)
