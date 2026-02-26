@@ -36,7 +36,7 @@ symbols = [
 # 3. Логика сигналов
 def get_signal(symbol):
     try:
-        bars = exchange.fetch_ohlcv(symbol, timeframe='1h', limit=100)
+        bars = exchange.fetch_ohlcv(symbol, timeframe='30m', limit=100)
         df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         df['rsi'] = ta.rsi(df['close'], length=14)
         last_rsi = df['rsi'].iloc[-1]
