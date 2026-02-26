@@ -1,5 +1,5 @@
-ccxt==4.2.34
-pandas==2.0.3
-pandas-ta
+ccxt
+pandas
+pandas_ta
 pyTelegramBotAPI
 schedule
