@@ -10,7 +10,7 @@ import traceback
 from flask import Flask
 from threading import Thread
 
-# 1. Настройка Flask (WSGI-интерфейс)
+# 1. Настройка Flask
 app = Flask(__name__)
 
 @app.route('/')
@@ -18,7 +18,7 @@ def home():
     return "Bot Chart v11.0 LIVE - WSGI Mode Active"
 
 # 2. Конфигурация
-TOKEN = '8758242353:AAECWJLY99i-QcZfU3iXmMfcWC8-PQDCHeY'
+TOKEN = '8758242353:AAGcSygEr0CAfuAM6KZzu9LMVdgNHMelMI4'
 CHAT_ID = '737143225'
 
 bot = telebot.TeleBot(TOKEN)
@@ -26,7 +26,20 @@ exchange = ccxt.binance()
 symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT', 'DOT/USDT', 'MATIC/USDT']
 sent_signals = {}
 
-# 3. Функции анализа и графиков
+# --- ФУНКЦИЯ РАСЧЕТА РИСКОВ ---
+def calculate_trade_params(current_price, balance=100, risk_percent=0.01):
+    # Уровни выхода
+    tp = current_price * 1.02  # +2% 🎯
+    sl = current_price * 0.99  # -1% 🛡️
+    
+    # Расчет объема позиции (чтобы при стопе в 1% потерять $1)
+    risk_amount = balance * risk_percent
+    price_change_to_sl = (current_price - sl) / current_price
+    position_size = risk_amount / price_change_to_sl
+    
+    return round(tp, 4), round(sl, 4), round(position_size, 2)
+
+# 3. Функции анализа
 def get_fear_greed_index():
     try:
         r = requests.get('https://api.alternative.me/fng/', timeout=5).json()
@@ -58,8 +71,10 @@ def analyze_market():
             price = df['close'].iloc[-1]
             
             signal = None
-            if last_rsi < 30: signal = "✅ BUY SIGNAL (Oversold)"
-            elif last_rsi > 70: signal = "🚨 SELL SIGNAL (Overbought)"
+            if last_rsi < 30: 
+                signal = "✅ BUY SIGNAL (Oversold)"
+            elif last_rsi > 70: 
+                signal = "🚨 SELL SIGNAL (Overbought)"
             
             if signal:
                 now = time.time()
@@ -67,17 +82,31 @@ def analyze_market():
                     continue
                 
                 sent_signals[symbol] = now
-                chart_file = create_chart(symbol, df)
-                caption = f"{signal}: {symbol}\nPrice: {price}\nRSI: {round(last_rsi, 2)}\n{get_fear_greed_index()}"
                 
+                # РАСЧЕТ ПАРАМЕТРОВ ДЛЯ BUY
+                if "BUY" in signal:
+                    tp, sl, volume = calculate_trade_params(price)
+                    caption = (
+                        f"✅ **BUY SIGNAL: {symbol}**\n"
+                        f"💰 Цена входа: **{price}**\n"
+                        f"🎯 Take Profit (+2%): **{tp}**\n"
+                        f"🛡️ Stop Loss (-1%): **{sl}**\n\n"
+                        f"💵 Сумма входа: **${volume}**\n"
+                        f"📊 RSI: {round(last_rsi, 2)} (Oversold)\n"
+                        f"{get_fear_greed_index()}"
+                    )
+                else:
+                    caption = f"{signal}: {symbol}\nPrice: {price}\nRSI: {round(last_rsi, 2)}\n{get_fear_greed_index()}"
+                
+                chart_file = create_chart(symbol, df)
                 with open(chart_file, 'rb') as photo:
-                    bot.send_photo(CHAT_ID, photo, caption=caption)
+                    bot.send_photo(CHAT_ID, photo, caption=caption, parse_mode="Markdown")
                 if os.path.exists(chart_file):
                     os.remove(chart_file)
         except Exception as e:
             print(f"Error analyzing {symbol}: {e}")
 
-# 4. Обработчики команд (Формат как на вашем скриншоте)
+# 4. Обработчики команд
 @bot.message_handler(commands=['status'])
 def status(m):
     bot.reply_to(m, f"✅ Bot is Online\nMonitoring: {', '.join(symbols)}\n{get_fear_greed_index()}")
@@ -95,38 +124,29 @@ def report(m):
         except: continue
     bot.send_message(m.chat.id, res, parse_mode="Markdown")
 
-# 5. Потоки для работы под управлением Gunicorn
+# 5. Потоки
 def bot_polling():
     while True:
         try:
-            print("🤖 Starting Telegram Polling...")
-            bot.remove_webhook()
             bot.polling(none_stop=True, interval=0, timeout=40)
-        except Exception as e:
-            print(f"Polling error: {e}")
+        except Exception:
             time.sleep(15)
 
 def market_loop():
-    print("📈 Market Monitor Started")
     while True:
         try:
             analyze_market()
-            time.sleep(600) # Интервал 10 минут
-        except Exception as e:
-            print(f"Loop error: {traceback.format_exc()}")
+            time.sleep(600)
+        except Exception:
             time.sleep(60)
 
-# ЭТА ЧАСТЬ ЗАПУСКАЕТ ПОТОКИ ПРИ ИМПОРТЕ МОДУЛЯ GUNICORN-ОМ
 def start_threads():
-    t1 = Thread(target=bot_polling, daemon=True)
-    t1.start()
-    t2 = Thread(target=market_loop, daemon=True)
-    t2.start()
+    Thread(target=bot_polling, daemon=True).start()
+    Thread(target=market_loop, daemon=True).start()
 
 start_threads()
 
 if __name__ == "__main__":
-    # Локальный запуск (если не через gunicorn)
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
-    
+        
