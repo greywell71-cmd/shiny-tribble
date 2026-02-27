@@ -18,6 +18,7 @@ symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT', 'ADA/USDT']
 # Словари для хранения состояния
 sent_signals = {}  
 trend_states = {}  
+active_trades = {} # Храним цели для отслеживания выхода
 
 app = Flask(__name__)
 
@@ -50,7 +51,7 @@ def send_report(message):
     
     bot.send_message(message.chat.id, report_text, parse_mode="Markdown")
 
-# --- ЛОГИКА АНАЛИЗА ---
+# --- ЛОГИКА АНАЛИЗА И ТОРГОВЛИ ---
 
 def calculate_trade_params(current_price, side="buy"):
     prec = 2 if current_price > 1 else 4
@@ -61,6 +62,32 @@ def calculate_trade_params(current_price, side="buy"):
         tp = current_price * 0.98  # -2% для шорта
         sl = current_price * 1.01  # +1% для шорта
     return round(tp, prec), round(sl, prec)
+
+def check_exits(symbol, current_price):
+    """Проверка достижения TP или SL"""
+    if symbol in active_trades:
+        trade = active_trades[symbol]
+        side = trade['side']
+        tp = trade['tp']
+        sl = trade['sl']
+
+        is_exit = False
+        result_text = ""
+
+        if side == "LONG":
+            if current_price >= tp:
+                is_exit, result_text = True, f"✅ **{symbol} ТЕЙК-ПРОФИТ (+2%)**"
+            elif current_price <= sl:
+                is_exit, result_text = True, f"❌ **{symbol} СТОП-ЛОСС (-1%)**"
+        else: # SHORT
+            if current_price <= tp:
+                is_exit, result_text = True, f"✅ **{symbol} ТЕЙК-ПРОФИТ (+2%)**"
+            elif current_price >= sl:
+                is_exit, result_text = True, f"❌ **{symbol} СТОП-ЛОСС (-1%)**"
+
+        if is_exit:
+            bot.send_message(CHAT_ID, f"{result_text}\n💰 Цена выхода: {current_price}", parse_mode="Markdown")
+            del active_trades[symbol]
 
 def analyze_market():
     print(f"[{time.strftime('%H:%M:%S')}] Запуск цикла анализа...")
@@ -74,5 +101,51 @@ def analyze_market():
             
             price = df['close'].iloc[-1]
             last_rsi = df['rsi'].iloc[-1]
-            ema_val =
-            
+            ema_val = df['ema200'].iloc[-1]
+
+            # Определение тренда
+            current_trend = "long" if price > ema_val else "short"
+            trend_states[symbol] = current_trend
+
+            # Проверка выходов из текущих сделок
+            check_exits(symbol, price)
+
+            # Поиск сигналов на вход
+            if (last_rsi < 30 and current_trend == "long") or (last_rsi > 70 and current_trend == "short"):
+                now = time.time()
+                # Анти-спам 2 часа
+                if symbol not in sent_signals or (now - sent_signals[symbol]) > 7200:
+                    sent_signals[symbol] = now
+                    direction = "LONG" if last_rsi < 30 else "SHORT"
+                    tp, sl = calculate_trade_params(price, side=direction.lower())
+                    
+                    # Запоминаем сделку для отслеживания выхода
+                    active_trades[symbol] = {'side': direction, 'tp': tp, 'sl': sl}
+                    
+                    text = (f"🚨 **{direction} SIGNAL: {symbol}**\n"
+                            f"💰 Вход: {price}\n"
+                            f"🎯 TP: {tp} | SL: {sl}\n"
+                            f"📈 RSI: {round(last_rsi, 2)}")
+                    bot.send_message(CHAT_ID, text, parse_mode="Markdown")
+        except Exception as e:
+            print(f"Ошибка анализа {symbol}: {e}")
+
+# --- ЗАПУСК ПОТОКОВ ---
+
+def run_analysis_loop():
+    while True:
+        analyze_market()
+        time.sleep(300)  # Уменьшили до 5 минут для более частого контроля цены
+
+def start_polling():
+    print("Запуск Telegram Polling...")
+    bot.infinity_polling(skip_pending=True)
+
+if __name__ == "__main__":
+    # Фоновые задачи
+    Thread(target=run_analysis_loop, daemon=True).start()
+    Thread(target=start_polling, daemon=True).start()
+    
+    # Flask для Render (порт 8080 по умолчанию)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
