@@ -10,7 +10,7 @@ from flask import Flask
 from threading import Thread, Lock
 
 # --- НАСТРОЙКИ ---
-TOKEN = '8758242353:AAGBtgn0MiiN8dGNcpZEfuLRZSQEHpjMeRA'
+TOKEN = '8758242353:AAE4E9WG7U1IrYaxdvdcwKJX_nkFbQQ9x9U'
 CHAT_ID = '737143225'
 DATA_FILE = 'bot_state.json'
 
