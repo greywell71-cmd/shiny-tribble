@@ -194,7 +194,7 @@ def home():
 # --- Команды Telegram ---
 @bot.message_handler(commands=['status'])
 def cmd_status(m):
-    bot.reply_to(m, "🤖 VIP Шура разьебывае, сканирует все пары USDT!")
+    bot.reply_to(m, "🤖 VIP Шкура разьебывае, сканирует все пары USDT!")
 
 @bot.message_handler(commands=['report'])
 def cmd_report(m):
