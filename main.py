@@ -15,7 +15,6 @@ import requests
 # --- Настройки ---
 TOKEN = "8758242353:AAGiH1xfNuyGduYiupjpa4gYlodNDMM7LMk"
 CHAT_ID = "737143225"
-ICON_FOLDER = './icons/'
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -24,6 +23,15 @@ bot = telebot.TeleBot(TOKEN)
 exchange = ccxt.binance({'enableRateLimit': True})
 lock = Lock()
 state = {'sent_signals': {}, 'last_direction': {}, 'history': {}}
+
+# --- Устанавливаем командное меню Telegram ---
+bot.set_my_commands([
+    types.BotCommand("status", "Проверить онлайн статус бота"),
+    types.BotCommand("report", "Показать последний сигнал по всем парам"),
+    types.BotCommand("history", "Показать историю сигналов"),
+    types.BotCommand("pairs", "Список всех сканируемых пар"),
+    types.BotCommand("help", "Инструкция по использованию бота")
+])
 
 # --- Генерация VIP PNG ---
 def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
@@ -79,7 +87,7 @@ def send_signal(symbol, signal, price, atr, rsi):
         state['sent_signals'][key] = now
         if symbol not in state['history']:
             state['history'][symbol] = []
-    
+
     entry_price = round(price,4)
     tp1 = round(price + atr if signal=='BUY' else price - atr,4)
     tp2 = round(price + atr*1.5 if signal=='BUY' else price - atr*1.5,4)
@@ -188,6 +196,29 @@ def cmd_history(m):
             for sig in h[-5:]:
                 msg += f"  - {sig['signal']} Entry:{sig['entry']} TP1:{sig['tp1']} SL:{sig['sl']}\n"
     bot.send_message(m.chat.id, msg)
+
+@bot.message_handler(commands=['pairs'])
+def cmd_pairs(m):
+    try:
+        markets = exchange.load_markets()
+        pairs = [s for s in markets if '/USDT' in s]
+        text = "🔹 Скандируемые пары:\n" + "\n".join(pairs)
+        bot.send_message(m.chat.id, text)
+    except Exception as e:
+        bot.send_message(m.chat.id, f"Ошибка загрузки пар: {e}")
+
+@bot.message_handler(commands=['help'])
+def cmd_help(m):
+    text = (
+        "🤖 VIP Crypto Bot команды:\n"
+        "/status - проверить статус бота\n"
+        "/report - последний сигнал по всем парам\n"
+        "/history - последние 5 сигналов по каждой паре\n"
+        "/pairs - список всех сканируемых пар\n"
+        "/help - эта инструкция\n\n"
+        "Сигналы отправляются с LONG и SHORT сразу и включают Entry, TP, SL, RSI, ATR, R/R и таймфрейм."
+    )
+    bot.send_message(m.chat.id, text)
 
 # --- Запуск на Render ---
 if __name__ == "__main__":
