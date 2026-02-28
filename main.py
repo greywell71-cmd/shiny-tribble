@@ -15,28 +15,26 @@ import requests
 # --- Настройки ---
 TOKEN = '8758242353:AAGiH1xfNuyGduYiupjpa4gYlodNDMM7LMk'
 CHAT_ID = '737143225'
-ICON_FOLDER = './icons/'  # Папка с иконками монет: BTC.png, ETH.png и т.д.
+ICON_FOLDER = './icons/'  # иконки монет
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# --- Сброс webhook ---
 def force_reset():
     try:
         requests.get(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=10)
         logger.info("Сессия Telegram очищена.")
     except Exception as e:
         logger.error(f"Ошибка сброса webhook: {e}")
-
 force_reset()
 
 bot = telebot.TeleBot(TOKEN)
 exchange = ccxt.binance({'enableRateLimit': True})
 lock = Lock()
-state = {'sent_signals': {}, 'last_direction': {}}
+state = {'sent_signals': {}, 'last_direction': {}, 'history': {}}
 
-# --- Генерация топового VIP PNG ---
-def generate_top_vip_signal(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
+# --- Функция генерации VIP PNG ---
+def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
     WIDTH, HEIGHT = 1024, 1024
     BG_COLOR = (18, 18, 18)
     TEXT_COLOR = (255, 255, 255)
@@ -46,7 +44,6 @@ def generate_top_vip_signal(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, 
 
     img = Image.new('RGB', (WIDTH, HEIGHT), BG_COLOR)
     draw = ImageDraw.Draw(img)
-    
     try:
         font_large = ImageFont.truetype("arial.ttf", 48)
         font_medium = ImageFont.truetype("arial.ttf", 36)
@@ -54,14 +51,13 @@ def generate_top_vip_signal(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, 
     except:
         font_large = font_medium = font_small = ImageFont.load_default()
 
-    # --- Иконка монеты ---
+    # Иконка монеты
     coin_name = symbol.split('/')[0]
     icon_path = os.path.join(ICON_FOLDER, f"{coin_name}.png")
     if os.path.exists(icon_path):
         icon = Image.open(icon_path).resize((100,100))
         img.paste(icon, (50,40), icon if icon.mode=='RGBA' else None)
 
-    # Заголовок
     draw.text((170,40), f"VIP SIGNAL {signal} {symbol}", fill=HIGHLIGHT_COLOR, font=font_large)
 
     # Основные данные
@@ -71,16 +67,16 @@ def generate_top_vip_signal(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, 
         draw.text((50,y), f"{k}: {v}", fill=TEXT_COLOR, font=font_medium)
         y += 55
 
-    # --- R/R графическая полоска ---
+    # Полоса R/R
     rr_y = y + 20
     rr_height = 30
     rr_width = WIDTH - 100
     draw.rectangle([50, rr_y, 50+rr_width, rr_y+rr_height], fill=(60,60,60))
     tp_pos = int((tp1 - sl)/(tp3 - sl) * rr_width) if tp3 != sl else rr_width
-    draw.rectangle([50, rr_y, 50+tp_pos, rr_y+rr_height], fill=(0,220,0) if signal=='BUY' else (255,60,60))
+    draw.rectangle([50, rr_y, 50+tp_pos, rr_y+rr_height], fill=HIGHLIGHT_COLOR)
     draw.text((50, rr_y+rr_height+5), "Risk/Reward", fill=TEXT_COLOR, font=font_small)
 
-    # --- Мини-график RSI ---
+    # Мини-RSI
     rsi_height = 100
     rsi_width = WIDTH - 100
     rsi_y = rr_y + rr_height + 50
@@ -88,7 +84,7 @@ def generate_top_vip_signal(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, 
     val = int(rsi_height * (1 - rsi/100))
     draw.line([50, rsi_y+val, 50+rsi_width, rsi_y+val], fill=(0,200,255))
 
-    # --- Кнопки ---
+    # Кнопки
     buttons = ["🟢 Spot BUY", "🔴 Spot SELL", "📈 Futures LONG", "📉 Futures SHORT", "📊 Open Chart"]
     y_button = HEIGHT-150
     button_width, button_height = 180, 60
@@ -105,56 +101,18 @@ def generate_top_vip_signal(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, 
     output.seek(0)
     return output
 
-# --- Анализ рынка ---
-def analyze_market():
-    logger.info(">>> Сканирование всех USDT-пар...")
-    try:
-        markets = exchange.load_markets()
-        symbols_to_scan = [s for s in markets if '/USDT' in s]
-    except Exception as e:
-        logger.error(f"Ошибка загрузки рынка: {e}")
-        return
-
-    for symbol in symbols_to_scan:
-        try:
-            bars = exchange.fetch_ohlcv(symbol, timeframe='1h', limit=210)
-            df = pd.DataFrame(bars, columns=['t','o','h','l','c','v'])
-            df['rsi'] = ta.rsi(df['c'], length=14)
-            df['ema'] = ta.ema(df['c'], length=200)
-            df['atr'] = ta.atr(df['h'], df['l'], df['c'], length=14)
-            df['vol_avg'] = df['v'].rolling(20).mean()
-
-            price = df['c'].iloc[-1]
-            rsi = df['rsi'].iloc[-1]
-            ema = df['ema'].iloc[-1]
-            atr = df['atr'].iloc[-1]
-            vol = df['v'].iloc[-1]
-            vol_avg = df['vol_avg'].iloc[-1]
-
-            if any(pd.isna(x) for x in [rsi, ema, atr, vol_avg]):
-                continue
-
-            # --- LONG сигнал ---
-            if rsi < 30 and price > ema and atr > price*0.003 and vol > vol_avg:
-                send_signal(symbol, "BUY", price, atr, rsi)
-
-            # --- SHORT сигнал ---
-            if rsi > 70 and price < ema and atr > price*0.003 and vol > vol_avg:
-                send_signal(symbol, "SELL", price, atr, rsi)
-
-            time.sleep(0.5)
-        except Exception as e:
-            logger.error(f"Ошибка анализа {symbol}: {e}")
-
-# --- Функция отправки сигнала ---
+# --- Отправка сигнала ---
 def send_signal(symbol, signal, price, atr, rsi):
     now = time.time()
     with lock:
-        last_time = state['sent_signals'].get(f"{symbol}_{signal}",0)
+        key = f"{symbol}_{signal}"
+        last_time = state['sent_signals'].get(key,0)
         if now - last_time < 7200:
             return
-        state['sent_signals'][f"{symbol}_{signal}"] = now
-
+        state['sent_signals'][key] = now
+        if symbol not in state['history']:
+            state['history'][symbol] = []
+    
     entry_price = round(price,4)
     tp1 = round(price + atr if signal=='BUY' else price - atr,4)
     tp2 = round(price + atr*1.5 if signal=='BUY' else price - atr*1.5,4)
@@ -181,33 +139,92 @@ def send_signal(symbol, signal, price, atr, rsi):
         types.InlineKeyboardButton("📊 Open Chart", url=urls["chart"])
     )
 
-    image = generate_top_vip_signal(symbol, signal, entry_price, tp1, tp2, tp3, sl_price, round(rsi,2), round(atr,4), tf, rr_ratio)
+    image = generate_vip_png(symbol, signal, entry_price, tp1, tp2, tp3, sl_price, round(rsi,2), round(atr,4), tf, rr_ratio)
     bot.send_photo(CHAT_ID, photo=image, caption=f"🔔 VIP сигнал {signal} {symbol}", reply_markup=markup)
-    logger.info(f"Отправлен топовый VIP сигнал {signal} для {symbol}")
+
+    # Логируем историю
+    state['history'][symbol].append({'signal':signal,'entry':entry_price,'tp1':tp1,'tp2':tp2,'tp3':tp3,'sl':sl_price,'time':now})
+
+# --- Анализ рынка ---
+def analyze_market():
+    logger.info(">>> Сканирование всех USDT-пар...")
+    try:
+        markets = exchange.load_markets()
+        symbols_to_scan = [s for s in markets if '/USDT' in s]
+    except Exception as e:
+        logger.error(f"Ошибка загрузки рынка: {e}")
+        return
+
+    for symbol in symbols_to_scan:
+        try:
+            bars = exchange.fetch_ohlcv(symbol, timeframe='1h', limit=210)
+            df = pd.DataFrame(bars, columns=['t','o','h','l','c','v'])
+            df['rsi'] = ta.rsi(df['c'], length=14)
+            df['ema'] = ta.ema(df['c'], length=200)
+            df['atr'] = ta.atr(df['h'], df['l'], df['c'], length=14)
+            df['macd'] = ta.macd(df['c'])['MACD_12_26_9']
+            df['vol_avg'] = df['v'].rolling(20).mean()
+
+            price = df['c'].iloc[-1]
+            rsi = df['rsi'].iloc[-1]
+            ema = df['ema'].iloc[-1]
+            atr = df['atr'].iloc[-1]
+            vol = df['v'].iloc[-1]
+            vol_avg = df['vol_avg'].iloc[-1]
+            macd = df['macd'].iloc[-1]
+
+            if any(pd.isna(x) for x in [rsi, ema, atr, vol_avg, macd]):
+                continue
+
+            # Фильтр по телу свечи
+            candle_body = abs(df['c'].iloc[-1]-df['o'].iloc[-1])
+            if candle_body < 0.5*atr:
+                continue
+
+            # LONG
+            if rsi<30 and price>ema and atr>price*0.003 and vol>vol_avg and macd>0:
+                send_signal(symbol, "BUY", price, atr, rsi)
+            # SHORT
+            if rsi>70 and price<ema and atr>price*0.003 and vol>vol_avg and macd<0:
+                send_signal(symbol, "SELL", price, atr, rsi)
+
+            time.sleep(0.5)
+        except Exception as e:
+            logger.error(f"Ошибка анализа {symbol}: {e}")
 
 # --- Flask ---
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Топовый VIP Бот работает"
+    return "VIP Бот работает"
 
 # --- Команды Telegram ---
 @bot.message_handler(commands=['status'])
 def cmd_status(m):
-    bot.reply_to(m, "🤖 VIP Шкура разьебывае, сканирует все пары USDT!")
+    bot.reply_to(m, "🤖 VIP Шкура в ТОПЕ, Ищу пару шкур по USDT!")
 
 @bot.message_handler(commands=['report'])
 def cmd_report(m):
     text = "📊 *ТЕКУЩИЙ ОТЧЕТ*\n\n"
     with lock:
-        for s,r in state['last_direction'].items():
-            text += f"🔹 `{s}` — Последний сигнал: {r}\n"
+        for s,h in state['history'].items():
+            last = h[-1]
+            text += f"🔹 `{s}` — Последний сигнал: {last['signal']} (Entry: {last['entry']})\n"
     bot.send_message(m.chat.id, text, parse_mode="Markdown")
+
+@bot.message_handler(commands=['history'])
+def cmd_history(m):
+    msg = "📜 История сигналов:\n\n"
+    with lock:
+        for s,h in state['history'].items():
+            msg += f"{s}:\n"
+            for sig in h[-5:]:
+                msg += f"  - {sig['signal']} Entry:{sig['entry']} TP1:{sig['tp1']} SL:{sig['sl']}\n"
+    bot.send_message(m.chat.id, msg)
 
 # --- Запуск ---
 if __name__ == "__main__":
     Thread(target=lambda:(time.sleep(5), analyze_market()), daemon=True).start()
-    Thread(target=lambda: [time.sleep(300), analyze_market()], daemon=True).start()
     port = int(os.environ.get("PORT",8080))
     Thread(target=lambda: app.run(host='0.0.0.0',port=port,use_reloader=False), daemon=True).start()
     while True:
