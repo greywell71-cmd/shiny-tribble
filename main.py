@@ -92,4 +92,87 @@ def analyze_market():
                         state['sent_signals'][symbol] = now
                         state['last_direction'][symbol] = signal
 
-                        # --- Точки
+                        # --- Точки входа и выхода ---
+                        entry_price = round(price, 4)
+                        if signal == "BUY":
+                            tp_price = round(price + atr, 4)
+                            sl_price = round(price - atr, 4)
+                        else:
+                            tp_price = round(price - atr, 4)
+                            sl_price = round(price + atr, 4)
+
+                        # --- Ссылки ---
+                        symbol_binance = symbol.replace('/','_')
+                        spot_buy_url = f"https://www.binance.com/en/trade/{symbol_binance}?type=MARKET"
+                        spot_sell_url = f"https://www.binance.com/en/trade/{symbol_binance}?type=MARKET"
+                        futures_buy_url = f"https://www.binance.com/en/futures/{symbol_binance}?type=MARKET"
+                        futures_sell_url = f"https://www.binance.com/en/futures/{symbol_binance}?type=MARKET"
+                        tradingview_url = f"https://www.tradingview.com/symbols/{symbol_binance}/"
+
+                        markup = types.InlineKeyboardMarkup(row_width=2)
+                        markup.add(
+                            types.InlineKeyboardButton("🟢 Spot BUY", url=spot_buy_url),
+                            types.InlineKeyboardButton("🔴 Spot SELL", url=spot_sell_url),
+                            types.InlineKeyboardButton("🟢 Futures BUY", url=futures_buy_url),
+                            types.InlineKeyboardButton("🔴 Futures SELL", url=futures_sell_url),
+                            types.InlineKeyboardButton("📊 График", url=tradingview_url)
+                        )
+
+                        text = (
+                            f"🔔 *СИГНАЛ {signal}* {'🟢' if signal=='BUY' else '🔴'}\n"
+                            f"━━━━━━━━━━━━━━━\n"
+                            f"🔹 Монета: `{symbol}`\n"
+                            f"🔹 Цена входа: {entry_price}\n"
+                            f"🔹 TP (Take Profit): {tp_price}\n"
+                            f"🔹 SL (Stop Loss): {sl_price}\n"
+                            f"🔹 RSI: {round(rsi,2)}\n"
+                            f"🔹 ATR: {round(atr,4)}\n"
+                            f"🔹 Объём: ↑ выше среднего\n"
+                        )
+
+                        bot.send_message(CHAT_ID, text, parse_mode="Markdown", reply_markup=markup)
+                        logger.info(f"Отправлен сигнал {signal} для {symbol}")
+
+            time.sleep(0.5)  # небольшая пауза, чтобы не перегружать API
+
+        except Exception as e:
+            logger.error(f"Ошибка анализа {symbol}: {e}")
+
+# --- Flask ---
+app = Flask(__name__)
+@app.route('/')
+def home():
+    return "Бот работает"
+
+# --- Команды ---
+@bot.message_handler(commands=['status'])
+def cmd_status(m):
+    bot.reply_to(m, "🤖 Бот онлайн и анализирует рынок!")
+
+@bot.message_handler(commands=['report'])
+def cmd_report(m):
+    text = "📊 *ТЕКУЩИЙ ОТЧЕТ*\n\n"
+    with lock:
+        for s, rsi in state['last_direction'].items():
+            text += f"🔹 `{s}` — Последний сигнал: {rsi}\n"
+    bot.send_message(m.chat.id, text, parse_mode="Markdown")
+
+# --- Запуск ---
+if __name__ == "__main__":
+    Thread(target=lambda:(time.sleep(5), analyze_market()), daemon=True).start()
+
+    def loop_analyze():
+        while True:
+            time.sleep(300)
+            analyze_market()
+    Thread(target=loop_analyze, daemon=True).start()
+
+    port = int(os.environ.get("PORT",8080))
+    Thread(target=lambda: app.run(host='0.0.0.0',port=port,use_reloader=False), daemon=True).start()
+
+    while True:
+        try:
+            bot.polling(non_stop=True, interval=3, timeout=20)
+        except Exception as e:
+            logger.error(f"Ошибка polling: {e}")
+            time.sleep(5)
