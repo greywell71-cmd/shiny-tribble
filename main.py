@@ -5,17 +5,17 @@ import telebot
 import ccxt
 import pandas_ta as ta
 import pandas as pd
-import requests
 from flask import Flask
 from threading import Thread, Lock
 from telebot import types
+from PIL import Image, ImageDraw, ImageFont
+from io import BytesIO
+import requests
 
 # --- Настройки ---
-TOKEN = '8758242353:AAE4E9WG7U1IrYaxdvdcwKJX_nkFbQQ9x9U'
+TOKEN = '8758242353:AAGiH1xfNuyGduYiupjpa4gYlodNDMM7LMk'
 CHAT_ID = '737143225'
-
-if not TOKEN:
-    raise ValueError("❌ BOT_TOKEN не установлен!")
+ICON_FOLDER = './icons/'  # Папка с иконками монет: BTC.png, ETH.png и т.д.
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -23,10 +23,7 @@ logger = logging.getLogger(__name__)
 # --- Сброс webhook ---
 def force_reset():
     try:
-        requests.get(
-            f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=True",
-            timeout=10
-        )
+        requests.get(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=10)
         logger.info("Сессия Telegram очищена.")
     except Exception as e:
         logger.error(f"Ошибка сброса webhook: {e}")
@@ -36,17 +33,88 @@ force_reset()
 bot = telebot.TeleBot(TOKEN)
 exchange = ccxt.binance({'enableRateLimit': True})
 lock = Lock()
-state = {
-    'sent_signals': {},
-    'last_direction': {}
-}
+state = {'sent_signals': {}, 'last_direction': {}}
 
-# --- Функция анализа рынка ---
+# --- Генерация топового VIP PNG ---
+def generate_top_vip_signal(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
+    WIDTH, HEIGHT = 1024, 1024
+    BG_COLOR = (18, 18, 18)
+    TEXT_COLOR = (255, 255, 255)
+    HIGHLIGHT_COLOR = (0, 220, 0) if signal=="BUY" else (255, 60, 60)
+    BUTTON_BG = (40, 40, 40)
+    BUTTON_HIGHLIGHT = HIGHLIGHT_COLOR
+
+    img = Image.new('RGB', (WIDTH, HEIGHT), BG_COLOR)
+    draw = ImageDraw.Draw(img)
+    
+    try:
+        font_large = ImageFont.truetype("arial.ttf", 48)
+        font_medium = ImageFont.truetype("arial.ttf", 36)
+        font_small = ImageFont.truetype("arial.ttf", 28)
+    except:
+        font_large = font_medium = font_small = ImageFont.load_default()
+
+    # --- Иконка монеты ---
+    coin_name = symbol.split('/')[0]
+    icon_path = os.path.join(ICON_FOLDER, f"{coin_name}.png")
+    if os.path.exists(icon_path):
+        icon = Image.open(icon_path).resize((100,100))
+        img.paste(icon, (50,40), icon if icon.mode=='RGBA' else None)
+
+    # Заголовок
+    draw.text((170,40), f"VIP SIGNAL {signal} {symbol}", fill=HIGHLIGHT_COLOR, font=font_large)
+
+    # Основные данные
+    y = 160
+    data = {"Entry": entry, "TP1": tp1, "TP2": tp2, "TP3": tp3, "SL": sl, "RSI": rsi, "ATR": atr, "TF": tf, "R/R": rr}
+    for k,v in data.items():
+        draw.text((50,y), f"{k}: {v}", fill=TEXT_COLOR, font=font_medium)
+        y += 55
+
+    # --- R/R графическая полоска ---
+    rr_y = y + 20
+    rr_height = 30
+    rr_width = WIDTH - 100
+    draw.rectangle([50, rr_y, 50+rr_width, rr_y+rr_height], fill=(60,60,60))
+    # TP зона
+    tp_pos = int((tp1 - sl)/(tp3 - sl) * rr_width) if tp3 != sl else rr_width
+    draw.rectangle([50, rr_y, 50+tp_pos, rr_y+rr_height], fill=(0,220,0) if signal=='BUY' else (255,60,60))
+    draw.text((50, rr_y+rr_height+5), "Risk/Reward", fill=TEXT_COLOR, font=font_small)
+
+    # --- Мини-график RSI ---
+    rsi_height = 100
+    rsi_width = WIDTH - 100
+    rsi_y = rr_y + rr_height + 50
+    draw.rectangle([50, rsi_y, 50+rsi_width, rsi_y+rsi_height], fill=(30,30,30))
+    # Рисуем RSI линию (условно)
+    for i in range(rsi_width-1):
+        val1 = int(rsi_height * (1 - rsi/100))
+        val2 = val1
+        draw.line([50+i, rsi_y+val1, 50+i+1, rsi_y+val2], fill=(0,200,255))
+
+    # --- Кнопки ---
+    buttons = ["🟢 Spot BUY", "🔴 Spot SELL", "📈 Futures LONG", "📉 Futures SHORT", "📊 Open Chart"]
+    x_start, y_button = HEIGHT-150, HEIGHT-150
+    button_width, button_height = 180, 60
+    gap = 20
+    for i, btn in enumerate(buttons):
+        x = 50 + i*(button_width+gap)
+        color = BUTTON_HIGHLIGHT if ('BUY' in btn and signal=='BUY') or ('SELL' in btn and signal=='SELL') else BUTTON_BG
+        draw.rectangle([x, y_button, x+button_width, y_button+button_height], fill=color)
+        w,h = draw.textsize(btn, font=font_small)
+        draw.text((x + (button_width-w)/2, y_button + (button_height-h)/2), btn, fill=(255,255,255), font=font_small)
+
+    output = BytesIO()
+    img.save(output, format="PNG")
+    output.seek(0)
+    return output
+
+# --- Анализ рынка ---
 def analyze_market():
-    logger.info(">>> Сканирование рынка...")
+    logger.info(">>> Сканирование всех USDT-пар...")
     try:
         markets = exchange.load_markets()
-        symbols_to_scan = [s for s in markets if '/USDT' in s]  # все пары с USDT
+        symbols_to_scan = [s for s in markets if '/USDT' in s]
     except Exception as e:
         logger.error(f"Ошибка загрузки рынка: {e}")
         return
@@ -70,7 +138,6 @@ def analyze_market():
             if any(pd.isna(x) for x in [rsi, ema, atr, vol_avg]):
                 continue
 
-            # --- Логика сигналов ---
             signal = None
             volatility_ok = atr > (price * 0.003)
             volume_ok = vol > vol_avg
@@ -83,25 +150,20 @@ def analyze_market():
             if signal:
                 now = time.time()
                 with lock:
-                    last_time = state['sent_signals'].get(symbol, 0)
+                    last_time = state['sent_signals'].get(symbol,0)
                     last_dir = state['last_direction'].get(symbol)
-                    time_ok = now - last_time > 7200
-                    direction_changed = last_dir != signal
-
-                    if time_ok and direction_changed:
+                    if now - last_time > 7200 and last_dir != signal:
                         state['sent_signals'][symbol] = now
                         state['last_direction'][symbol] = signal
 
-                        # --- Точки входа и выхода ---
-                        entry_price = round(price, 4)
-                        if signal == "BUY":
-                            tp_price = round(price + atr, 4)
-                            sl_price = round(price - atr, 4)
-                        else:
-                            tp_price = round(price - atr, 4)
-                            sl_price = round(price + atr, 4)
+                        entry_price = round(price,4)
+                        tp1 = round(price + atr if signal=='BUY' else price - atr,4)
+                        tp2 = round(price + atr*1.5 if signal=='BUY' else price - atr*1.5,4)
+                        tp3 = round(price + atr*2 if signal=='BUY' else price - atr*2,4)
+                        sl_price = round(price - atr if signal=='BUY' else price + atr,4)
+                        rr_ratio = "1:2"
+                        tf = "1H"
 
-                        # --- Ссылки ---
                         symbol_binance = symbol.replace('/','_')
                         spot_buy_url = f"https://www.binance.com/en/trade/{symbol_binance}?type=MARKET"
                         spot_sell_url = f"https://www.binance.com/en/trade/{symbol_binance}?type=MARKET"
@@ -113,28 +175,16 @@ def analyze_market():
                         markup.add(
                             types.InlineKeyboardButton("🟢 Spot BUY", url=spot_buy_url),
                             types.InlineKeyboardButton("🔴 Spot SELL", url=spot_sell_url),
-                            types.InlineKeyboardButton("🟢 Futures BUY", url=futures_buy_url),
-                            types.InlineKeyboardButton("🔴 Futures SELL", url=futures_sell_url),
-                            types.InlineKeyboardButton("📊 График", url=tradingview_url)
+                            types.InlineKeyboardButton("📈 Futures LONG", url=futures_buy_url),
+                            types.InlineKeyboardButton("📉 Futures SHORT", url=futures_sell_url),
+                            types.InlineKeyboardButton("📊 Open Chart", url=tradingview_url)
                         )
 
-                        text = (
-                            f"🔔 *СИГНАЛ {signal}* {'🟢' if signal=='BUY' else '🔴'}\n"
-                            f"━━━━━━━━━━━━━━━\n"
-                            f"🔹 Монета: `{symbol}`\n"
-                            f"🔹 Цена входа: {entry_price}\n"
-                            f"🔹 TP (Take Profit): {tp_price}\n"
-                            f"🔹 SL (Stop Loss): {sl_price}\n"
-                            f"🔹 RSI: {round(rsi,2)}\n"
-                            f"🔹 ATR: {round(atr,4)}\n"
-                            f"🔹 Объём: ↑ выше среднего\n"
-                        )
+                        image = generate_top_vip_signal(symbol, signal, entry_price, tp1, tp2, tp3, sl_price, round(rsi,2), round(atr,4), tf, rr_ratio)
+                        bot.send_photo(CHAT_ID, photo=image, caption=f"🔔 VIP сигнал {signal} {symbol}", reply_markup=markup)
+                        logger.info(f"Отправлен топовый VIP сигнал {signal} для {symbol}")
 
-                        bot.send_message(CHAT_ID, text, parse_mode="Markdown", reply_markup=markup)
-                        logger.info(f"Отправлен сигнал {signal} для {symbol}")
-
-            time.sleep(0.5)  # небольшая пауза, чтобы не перегружать API
-
+            time.sleep(0.5)
         except Exception as e:
             logger.error(f"Ошибка анализа {symbol}: {e}")
 
@@ -142,34 +192,27 @@ def analyze_market():
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Бот работает"
+    return "Топовый VIP Бот работает"
 
-# --- Команды ---
+# --- Команды Telegram ---
 @bot.message_handler(commands=['status'])
 def cmd_status(m):
-    bot.reply_to(m, "🤖 Бот онлайн и анализирует рынок!")
+    bot.reply_to(m, "🤖 VIP Шкура онлайн, сканирует все пары USDT!")
 
 @bot.message_handler(commands=['report'])
 def cmd_report(m):
     text = "📊 *ТЕКУЩИЙ ОТЧЕТ*\n\n"
     with lock:
-        for s, rsi in state['last_direction'].items():
-            text += f"🔹 `{s}` — Последний сигнал: {rsi}\n"
+        for s,r in state['last_direction'].items():
+            text += f"🔹 `{s}` — Последний сигнал: {r}\n"
     bot.send_message(m.chat.id, text, parse_mode="Markdown")
 
 # --- Запуск ---
 if __name__ == "__main__":
     Thread(target=lambda:(time.sleep(5), analyze_market()), daemon=True).start()
-
-    def loop_analyze():
-        while True:
-            time.sleep(300)
-            analyze_market()
-    Thread(target=loop_analyze, daemon=True).start()
-
+    Thread(target=lambda: [time.sleep(300), analyze_market()], daemon=True).start()
     port = int(os.environ.get("PORT",8080))
     Thread(target=lambda: app.run(host='0.0.0.0',port=port,use_reloader=False), daemon=True).start()
-
     while True:
         try:
             bot.polling(non_stop=True, interval=3, timeout=20)
