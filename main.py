@@ -12,14 +12,17 @@ from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 
 # --- Настройки ---
-TOKEN = "8758242353:AAGiH1xfNuyGduYiupjpa4gYlodNDMM7LMk"
-CHAT_ID = "737143225"
+TOKEN = "8758242353:AAG5DoNU8Im5TXaXFeeWgHSj1_nSB4OwblI"
+CHAT_ID = os.getenv('737143225')
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 bot = telebot.TeleBot(TOKEN)
-exchange = ccxt.binance({"enableRateLimit": True})
+exchange = ccxt.binance({
+    "enableRateLimit": True,  # Включаем встроенную защиту от rate limit
+    "options": {"defaultType": "spot"}  # Уточняем spot, чтобы избежать фьючерсов
+})
 lock = Lock()
 state = {"sent_signals": {}, "last_direction": {}, "history": {}}
 
@@ -34,7 +37,21 @@ bot.set_my_commands(
     ]
 )
 
-# --- Генерация VIP PNG ---
+# --- Список сканируемых пар (ограничен топ-50 ликвидными, чтобы избежать бана по rate limit) ---
+SYMBOLS_TO_SCAN = [
+    'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT',
+    'ADA/USDT', 'DOGE/USDT', 'AVAX/USDT', 'SHIB/USDT', 'LINK/USDT',
+    'TON/USDT', 'DOT/USDT', 'SUI/USDT', 'NEAR/USDT', 'TRX/USDT',
+    'PEPE/USDT', 'LTC/USDT', 'UNI/USDT', 'APT/USDT', 'ICP/USDT',
+    'HBAR/USDT', 'KAS/USDT', 'ETC/USDT', 'FET/USDT', 'VET/USDT',
+    'OP/USDT', 'FIL/USDT', 'INJ/USDT', 'ARB/USDT', 'MNT/USDT',
+    'IMX/USDT', 'WIF/USDT', 'JUP/USDT', 'ONDO/USDT', 'AR/USDT',
+    'FLOKI/USDT', 'GRT/USDT', 'RUNE/USDT', 'SEI/USDT', 'TIA/USDT',
+    'ALGO/USDT', 'AAVE/USDT', 'QNT/USDT', 'MKR/USDT', 'FLOW/USDT',
+    'BCH/USDT', 'THETA/USDT', 'FTM/USDT', 'STX/USDT', 'ATOM/USDT',
+]
+
+# --- Генерация VIP PNG (используем дефолтный шрифт, чтобы избежать ошибок на серверах) ---
 def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
     WIDTH, HEIGHT = 1024, 1024
     BG_COLOR = (18, 18, 18)
@@ -45,12 +62,9 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
 
     img = Image.new("RGB", (WIDTH, HEIGHT), BG_COLOR)
     draw = ImageDraw.Draw(img)
-    try:
-        font_large = ImageFont.truetype("arial.ttf", 48)
-        font_medium = ImageFont.truetype("arial.ttf", 36)
-        font_small = ImageFont.truetype("arial.ttf", 28)
-    except:
-        font_large = font_medium = font_small = ImageFont.load_default()
+    font_large = ImageFont.load_default()  # Дефолтный шрифт, чтобы работал везде
+    font_medium = ImageFont.load_default()
+    font_small = ImageFont.load_default()
 
     draw.text((50, 40), f"VIP SIGNAL {signal} {symbol}", fill=HIGHLIGHT_COLOR, font=font_large)
 
@@ -86,14 +100,14 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     output.seek(0)
     return output
 
-
-# --- Отправка сигнала ---
+# --- Отправка сигнала (добавлена обработка ошибок) ---
 def send_signal(symbol, signal, price, atr, rsi):
     now = time.time()
     with lock:
         key = f"{symbol}_{signal}"
         last_time = state["sent_signals"].get(key, 0)
         if now - last_time < 7200:
+            logger.info(f"Сигнал {symbol} {signal} пропущен: недавно отправлен")
             return
         state["sent_signals"][key] = now
         if symbol not in state["history"]:
@@ -125,26 +139,50 @@ def send_signal(symbol, signal, price, atr, rsi):
         types.InlineKeyboardButton("📊 Open Chart", url=urls["chart"]),
     )
 
-    image = generate_vip_png(symbol, signal, entry_price, tp1, tp2, tp3, sl_price, round(rsi, 2), round(atr, 4), tf, rr_ratio)
-    bot.send_photo(CHAT_ID, photo=image, caption=f"🔔 VIP сигнал {signal} {symbol}", reply_markup=markup)
+    try:
+        image = generate_vip_png(symbol, signal, entry_price, tp1, tp2, tp3, sl_price, round(rsi, 2), round(atr, 4), tf, rr_ratio)
+        bot.send_photo(CHAT_ID, photo=image, caption=f"🔔 VIP сигнал {signal} {symbol}", reply_markup=markup)
+        logger.info(f"Сигнал отправлен: {symbol} {signal}")
+        state["history"][symbol].append({"signal": signal, "entry": entry_price, "tp1": tp1, "tp2": tp2, "tp3": tp3, "sl": sl_price, "time": now})
+    except Exception as e:
+        logger.error(f"Ошибка отправки сигнала {symbol}: {e}")
 
-    state["history"][symbol].append({"signal": signal, "entry": entry_price, "tp1": tp1, "tp2": tp2, "tp3": tp3, "sl": sl_price, "time": now})
+# --- Безопасный fetch_ohlcv с защитой от rate limit (рекурсия до 3 попыток) ---
+def safe_fetch_ohlcv(symbol, timeframe="1h", limit=210, attempts=3):
+    for attempt in range(attempts):
+        try:
+            return exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        except ccxt.RateLimitExceeded as e:
+            wait_time = 30 * (attempt + 1)  # 30, 60, 90 сек
+            logger.warning(f"Rate limit на {symbol} (попытка {attempt+1}): {e} → ждём {wait_time} сек")
+            time.sleep(wait_time)
+        except ccxt.NetworkError as e:
+            logger.warning(f"Сетевая ошибка на {symbol}: {e} → ждём 10 сек")
+            time.sleep(10)
+        except Exception as e:
+            logger.error(f"{symbol} fetch_ohlcv упал: {e}")
+            return None
+    logger.error(f"Не удалось загрузить данные для {symbol} после {attempts} попыток")
+    return None
 
-
-# --- Анализ рынка ---
+# --- Анализ рынка (используем фиксированный список пар, добавлены логи) ---
 def analyze_market():
     try:
         markets = exchange.load_markets()
         if not markets or not isinstance(markets, dict):
+            logger.error("Ошибка загрузки markets")
             return
-        symbols_to_scan = [s for s in markets.keys() if "/USDT" in s]
+        symbols_to_scan = [s for s in SYMBOLS_TO_SCAN if s in markets]  # Только активные
+        logger.info(f"Сканируем {len(symbols_to_scan)} пар")
     except Exception as e:
         logger.error(f"Ошибка загрузки рынка: {e}")
         return
 
     for symbol in symbols_to_scan:
         try:
-            bars = exchange.fetch_ohlcv(symbol, timeframe="1h", limit=210)
+            bars = safe_fetch_ohlcv(symbol)
+            if bars is None:
+                continue
             df = pd.DataFrame(bars, columns=["t", "o", "h", "l", "c", "v"])
             df["rsi"] = ta.rsi(df["c"], length=14)
             df["ema"] = ta.ema(df["c"], length=200)
@@ -161,86 +199,68 @@ def analyze_market():
             macd = df["macd"].iloc[-1]
 
             if any(pd.isna(x) for x in [rsi, ema, atr, vol_avg, macd]):
+                logger.warning(f"{symbol}: NaN в индикаторах, пропуск")
                 continue
 
             candle_body = abs(df["c"].iloc[-1] - df["o"].iloc[-1])
             if candle_body < 0.5 * atr or vol <= vol_avg:
                 continue
 
-            if rsi < 30 and price > ema and macd > 0:
+            # Условия сигнала (ослаблены для теста: RSI <35 вместо 30, >65 вместо 70; убрал macd >0/<0 для частоты)
+            # Если сигналы всё равно редкие - уберите фильтр по vol/candle_body временно
+            if rsi < 35 and price > ema:  # and macd > 0:  # закомментировал macd для теста
                 send_signal(symbol, "BUY", price, atr, rsi)
-            if rsi > 70 and price < ema and macd < 0:
+            if rsi > 65 and price < ema:  # and macd < 0:
                 send_signal(symbol, "SELL", price, atr, rsi)
 
-            time.sleep(0.5)
+            time.sleep(0.5)  # Минимальная пауза между парами
         except Exception as e:
             logger.error(f"Ошибка анализа {symbol}: {e}")
-
 
 def loop_analyze():
     while True:
         analyze_market()
-        time.sleep(300)
-
+        time.sleep(300)  # 5 минут
 
 # --- Flask ---
 app = Flask(__name__)
-
 
 @app.route("/")
 def home():
     return "VIP Бот работает"
 
-
 # --- Команды Telegram ---
 @bot.message_handler(commands=["status"])
 def cmd_status(m):
-    bot.reply_to(m, "🤖 VIP Бот онлайн, сканирует все пары USDT!")
-
+    bot.reply_to(m, "🤖 VIP Бот онлайн, сканирует топ-пары USDT!")
 
 @bot.message_handler(commands=["report"])
 def cmd_report(m):
     text = "📊 *ТЕКУЩИЙ ОТЧЕТ*\n\n"
     with lock:
+        if not state["history"]:
+            text += "Нет сигналов пока."
         for s, h in state["history"].items():
             last = h[-1]
             text += f"🔹 `{s}` — Последний сигнал: {last['signal']} (Entry: {last['entry']})\n"
     bot.send_message(m.chat.id, text, parse_mode="Markdown")
 
-
 @bot.message_handler(commands=["history"])
 def cmd_history(m):
     msg = "📜 История сигналов:\n\n"
     with lock:
+        if not state["history"]:
+            msg += "Нет истории."
         for s, h in state["history"].items():
             msg += f"{s}:\n"
             for sig in h[-5:]:
                 msg += f"  - {sig['signal']} Entry:{sig['entry']} TP1:{sig['tp1']} SL:{sig['sl']}\n"
     bot.send_message(m.chat.id, msg)
 
-
-# --- Исправленная команда /pairs ---
 @bot.message_handler(commands=["pairs"])
 def cmd_pairs(m):
-    try:
-        markets = exchange.load_markets()
-        if not markets or not isinstance(markets, dict):
-            bot.send_message(m.chat.id, "⚠️ Не удалось загрузить пары с биржи.")
-            return
-
-        pairs = [s for s in markets.keys() if "/USDT" in s]
-        if not pairs:
-            bot.send_message(m.chat.id, "⚠️ USDT-пары не найдены.")
-            return
-
-        chunk_size = 50
-        for i in range(0, len(pairs), chunk_size):
-            text = "🔹 Скандируемые пары (часть {}):\n".format(i // chunk_size + 1)
-            text += "\n".join(pairs[i : i + chunk_size])
-            bot.send_message(m.chat.id, text)
-    except Exception as e:
-        bot.send_message(m.chat.id, "Ошибка загрузки пар: {}".format(e))
-
+    text = "🔹 Скандируемые пары:\n" + "\n".join(SYMBOLS_TO_SCAN)
+    bot.send_message(m.chat.id, text)
 
 @bot.message_handler(commands=["help"])
 def cmd_help(m):
@@ -254,7 +274,6 @@ def cmd_help(m):
         "Сигналы отправляются с LONG и SHORT сразу и включают Entry, TP, SL, RSI, ATR, R/R и таймфрейм."
     )
     bot.send_message(m.chat.id, text)
-
 
 # --- Запуск ---
 if __name__ == "__main__":
