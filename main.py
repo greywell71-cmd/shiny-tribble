@@ -10,11 +10,10 @@ from threading import Thread, Lock
 from telebot import types
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
-import requests
 
 # --- Настройки ---
-TOKEN = "8758242353:AAGiH1xfNuyGduYiupjpa4gYlodNDMM7LMk"
-CHAT_ID = "737143225"
+TOKEN = os.environ.get("8758242353:AAGiH1xfNuyGduYiupjpa4gYlodNDMM7LMk") 
+CHAT_ID = os.environ.get("737143225")
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -202,8 +201,16 @@ def cmd_pairs(m):
     try:
         markets = exchange.load_markets()
         pairs = [s for s in markets if '/USDT' in s]
-        text = "🔹 Скандируемые пары:\n" + "\n".join(pairs)
-        bot.send_message(m.chat.id, text)
+
+        if not pairs:
+            bot.send_message(m.chat.id, "⚠️ USDT-пары не найдены.")
+            return
+
+        chunk_size = 50  # отправляем блоками по 50 пар
+        for i in range(0, len(pairs), chunk_size):
+            text = "🔹 Скандируемые пары (часть {}):\n".format(i//chunk_size + 1)
+            text += "\n".join(pairs[i:i+chunk_size])
+            bot.send_message(m.chat.id, text)
     except Exception as e:
         bot.send_message(m.chat.id, f"Ошибка загрузки пар: {e}")
 
