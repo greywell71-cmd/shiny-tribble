@@ -76,7 +76,6 @@ def generate_top_vip_signal(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, 
     rr_height = 30
     rr_width = WIDTH - 100
     draw.rectangle([50, rr_y, 50+rr_width, rr_y+rr_height], fill=(60,60,60))
-    # TP зона
     tp_pos = int((tp1 - sl)/(tp3 - sl) * rr_width) if tp3 != sl else rr_width
     draw.rectangle([50, rr_y, 50+tp_pos, rr_y+rr_height], fill=(0,220,0) if signal=='BUY' else (255,60,60))
     draw.text((50, rr_y+rr_height+5), "Risk/Reward", fill=TEXT_COLOR, font=font_small)
@@ -86,15 +85,12 @@ def generate_top_vip_signal(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, 
     rsi_width = WIDTH - 100
     rsi_y = rr_y + rr_height + 50
     draw.rectangle([50, rsi_y, 50+rsi_width, rsi_y+rsi_height], fill=(30,30,30))
-    # Рисуем RSI линию (условно)
-    for i in range(rsi_width-1):
-        val1 = int(rsi_height * (1 - rsi/100))
-        val2 = val1
-        draw.line([50+i, rsi_y+val1, 50+i+1, rsi_y+val2], fill=(0,200,255))
+    val = int(rsi_height * (1 - rsi/100))
+    draw.line([50, rsi_y+val, 50+rsi_width, rsi_y+val], fill=(0,200,255))
 
     # --- Кнопки ---
     buttons = ["🟢 Spot BUY", "🔴 Spot SELL", "📈 Futures LONG", "📉 Futures SHORT", "📊 Open Chart"]
-    x_start, y_button = HEIGHT-150, HEIGHT-150
+    y_button = HEIGHT-150
     button_width, button_height = 180, 60
     gap = 20
     for i, btn in enumerate(buttons):
@@ -138,55 +134,56 @@ def analyze_market():
             if any(pd.isna(x) for x in [rsi, ema, atr, vol_avg]):
                 continue
 
-            signal = None
-            volatility_ok = atr > (price * 0.003)
-            volume_ok = vol > vol_avg
+            # --- LONG сигнал ---
+            if rsi < 30 and price > ema and atr > price*0.003 and vol > vol_avg:
+                send_signal(symbol, "BUY", price, atr, rsi)
 
-            if rsi < 30 and price > ema and volatility_ok and volume_ok:
-                signal = "BUY"
-            elif rsi > 70 and price < ema and volatility_ok and volume_ok:
-                signal = "SELL"
-
-            if signal:
-                now = time.time()
-                with lock:
-                    last_time = state['sent_signals'].get(symbol,0)
-                    last_dir = state['last_direction'].get(symbol)
-                    if now - last_time > 7200 and last_dir != signal:
-                        state['sent_signals'][symbol] = now
-                        state['last_direction'][symbol] = signal
-
-                        entry_price = round(price,4)
-                        tp1 = round(price + atr if signal=='BUY' else price - atr,4)
-                        tp2 = round(price + atr*1.5 if signal=='BUY' else price - atr*1.5,4)
-                        tp3 = round(price + atr*2 if signal=='BUY' else price - atr*2,4)
-                        sl_price = round(price - atr if signal=='BUY' else price + atr,4)
-                        rr_ratio = "1:2"
-                        tf = "1H"
-
-                        symbol_binance = symbol.replace('/','_')
-                        spot_buy_url = f"https://www.binance.com/en/trade/{symbol_binance}?type=MARKET"
-                        spot_sell_url = f"https://www.binance.com/en/trade/{symbol_binance}?type=MARKET"
-                        futures_buy_url = f"https://www.binance.com/en/futures/{symbol_binance}?type=MARKET"
-                        futures_sell_url = f"https://www.binance.com/en/futures/{symbol_binance}?type=MARKET"
-                        tradingview_url = f"https://www.tradingview.com/symbols/{symbol_binance}/"
-
-                        markup = types.InlineKeyboardMarkup(row_width=2)
-                        markup.add(
-                            types.InlineKeyboardButton("🟢 Spot BUY", url=spot_buy_url),
-                            types.InlineKeyboardButton("🔴 Spot SELL", url=spot_sell_url),
-                            types.InlineKeyboardButton("📈 Futures LONG", url=futures_buy_url),
-                            types.InlineKeyboardButton("📉 Futures SHORT", url=futures_sell_url),
-                            types.InlineKeyboardButton("📊 Open Chart", url=tradingview_url)
-                        )
-
-                        image = generate_top_vip_signal(symbol, signal, entry_price, tp1, tp2, tp3, sl_price, round(rsi,2), round(atr,4), tf, rr_ratio)
-                        bot.send_photo(CHAT_ID, photo=image, caption=f"🔔 VIP сигнал {signal} {symbol}", reply_markup=markup)
-                        logger.info(f"Отправлен топовый VIP сигнал {signal} для {symbol}")
+            # --- SHORT сигнал ---
+            if rsi > 70 and price < ema and atr > price*0.003 and vol > vol_avg:
+                send_signal(symbol, "SELL", price, atr, rsi)
 
             time.sleep(0.5)
         except Exception as e:
             logger.error(f"Ошибка анализа {symbol}: {e}")
+
+# --- Функция отправки сигнала ---
+def send_signal(symbol, signal, price, atr, rsi):
+    now = time.time()
+    with lock:
+        last_time = state['sent_signals'].get(f"{symbol}_{signal}",0)
+        if now - last_time < 7200:
+            return
+        state['sent_signals'][f"{symbol}_{signal}"] = now
+
+    entry_price = round(price,4)
+    tp1 = round(price + atr if signal=='BUY' else price - atr,4)
+    tp2 = round(price + atr*1.5 if signal=='BUY' else price - atr*1.5,4)
+    tp3 = round(price + atr*2 if signal=='BUY' else price - atr*2,4)
+    sl_price = round(price - atr if signal=='BUY' else price + atr,4)
+    rr_ratio = "1:2"
+    tf = "1H"
+
+    symbol_binance = symbol.replace('/','_')
+    urls = {
+        "spot_buy": f"https://www.binance.com/en/trade/{symbol_binance}?type=MARKET",
+        "spot_sell": f"https://www.binance.com/en/trade/{symbol_binance}?type=MARKET",
+        "futures_buy": f"https://www.binance.com/en/futures/{symbol_binance}?type=MARKET",
+        "futures_sell": f"https://www.binance.com/en/futures/{symbol_binance}?type=MARKET",
+        "chart": f"https://www.tradingview.com/symbols/{symbol_binance}/"
+    }
+
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("🟢 Spot BUY", url=urls["spot_buy"]),
+        types.InlineKeyboardButton("🔴 Spot SELL", url=urls["spot_sell"]),
+        types.InlineKeyboardButton("📈 Futures LONG", url=urls["futures_buy"]),
+        types.InlineKeyboardButton("📉 Futures SHORT", url=urls["futures_sell"]),
+        types.InlineKeyboardButton("📊 Open Chart", url=urls["chart"])
+    )
+
+    image = generate_top_vip_signal(symbol, signal, entry_price, tp1, tp2, tp3, sl_price, round(rsi,2), round(atr,4), tf, rr_ratio)
+    bot.send_photo(CHAT_ID, photo=image, caption=f"🔔 VIP сигнал {signal} {symbol}", reply_markup=markup)
+    logger.info(f"Отправлен топовый VIP сигнал {signal} для {symbol}")
 
 # --- Flask ---
 app = Flask(__name__)
@@ -197,7 +194,7 @@ def home():
 # --- Команды Telegram ---
 @bot.message_handler(commands=['status'])
 def cmd_status(m):
-    bot.reply_to(m, "🤖 VIP Шкура онлайн, сканирует все пары USDT!")
+    bot.reply_to(m, "🤖 VIP Шура разьебывае, сканирует все пары USDT!")
 
 @bot.message_handler(commands=['report'])
 def cmd_report(m):
