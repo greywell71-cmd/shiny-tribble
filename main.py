@@ -12,8 +12,8 @@ from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 
 # --- Настройки ---
-TOKEN = os.environ.get("8758242353:AAGiH1xfNuyGduYiupjpa4gYlodNDMM7LMk") 
-CHAT_ID = os.environ.get("737143225")
+TOKEN = os.environ.get "8758242353:AAGiH1xfNuyGduYiupjpa4gYlodNDMM7LMk"
+CHAT_ID = os.environ.get "737143225"
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ exchange = ccxt.binance({'enableRateLimit': True})
 lock = Lock()
 state = {'sent_signals': {}, 'last_direction': {}, 'history': {}}
 
-# --- Устанавливаем командное меню Telegram ---
+# --- Командное меню ---
 bot.set_my_commands([
     types.BotCommand("status", "Проверить онлайн статус бота"),
     types.BotCommand("report", "Показать последний сигнал по всем парам"),
@@ -122,7 +122,9 @@ def send_signal(symbol, signal, price, atr, rsi):
 def analyze_market():
     try:
         markets = exchange.load_markets()
-        symbols_to_scan = [s for s in markets if '/USDT' in s]
+        if not markets or not isinstance(markets, dict):
+            return
+        symbols_to_scan = [s for s in markets.keys() if '/USDT' in s]
     except Exception as e:
         logger.error(f"Ошибка загрузки рынка: {e}")
         return
@@ -196,17 +198,21 @@ def cmd_history(m):
                 msg += f"  - {sig['signal']} Entry:{sig['entry']} TP1:{sig['tp1']} SL:{sig['sl']}\n"
     bot.send_message(m.chat.id, msg)
 
+# --- Исправленная команда /pairs ---
 @bot.message_handler(commands=['pairs'])
 def cmd_pairs(m):
     try:
         markets = exchange.load_markets()
-        pairs = [s for s in markets if '/USDT' in s]
+        if not markets or not isinstance(markets, dict):
+            bot.send_message(m.chat.id, "⚠️ Не удалось загрузить пары с биржи.")
+            return
 
+        pairs = [s for s in markets.keys() if '/USDT' in s]
         if not pairs:
             bot.send_message(m.chat.id, "⚠️ USDT-пары не найдены.")
             return
 
-        chunk_size = 50  # отправляем блоками по 50 пар
+        chunk_size = 50
         for i in range(0, len(pairs), chunk_size):
             text = "🔹 Скандируемые пары (часть {}):\n".format(i//chunk_size + 1)
             text += "\n".join(pairs[i:i+chunk_size])
@@ -227,7 +233,7 @@ def cmd_help(m):
     )
     bot.send_message(m.chat.id, text)
 
-# --- Запуск на Render ---
+# --- Запуск ---
 if __name__ == "__main__":
     Thread(target=loop_analyze, daemon=True).start()
     Thread(target=lambda: bot.polling(non_stop=True, interval=3, timeout=20), daemon=True).start()
