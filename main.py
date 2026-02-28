@@ -15,7 +15,7 @@ import requests
 # --- Настройки ---
 TOKEN = '8758242353:AAGiH1xfNuyGduYiupjpa4gYlodNDMM7LMk'
 CHAT_ID = '737143225'
-ICON_FOLDER = './icons/'  # иконки монет
+ICON_FOLDER = './icons/'
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -51,14 +51,8 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     except:
         font_large = font_medium = font_small = ImageFont.load_default()
 
-    # Иконка монеты
-    coin_name = symbol.split('/')[0]
-    icon_path = os.path.join(ICON_FOLDER, f"{coin_name}.png")
-    if os.path.exists(icon_path):
-        icon = Image.open(icon_path).resize((100,100))
-        img.paste(icon, (50,40), icon if icon.mode=='RGBA' else None)
-
-    draw.text((170,40), f"VIP SIGNAL {signal} {symbol}", fill=HIGHLIGHT_COLOR, font=font_large)
+    # Заголовок
+    draw.text((50,40), f"VIP SIGNAL {signal} {symbol}", fill=HIGHLIGHT_COLOR, font=font_large)
 
     # Основные данные
     y = 160
@@ -66,23 +60,6 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     for k,v in data.items():
         draw.text((50,y), f"{k}: {v}", fill=TEXT_COLOR, font=font_medium)
         y += 55
-
-    # Полоса R/R
-    rr_y = y + 20
-    rr_height = 30
-    rr_width = WIDTH - 100
-    draw.rectangle([50, rr_y, 50+rr_width, rr_y+rr_height], fill=(60,60,60))
-    tp_pos = int((tp1 - sl)/(tp3 - sl) * rr_width) if tp3 != sl else rr_width
-    draw.rectangle([50, rr_y, 50+tp_pos, rr_y+rr_height], fill=HIGHLIGHT_COLOR)
-    draw.text((50, rr_y+rr_height+5), "Risk/Reward", fill=TEXT_COLOR, font=font_small)
-
-    # Мини-RSI
-    rsi_height = 100
-    rsi_width = WIDTH - 100
-    rsi_y = rr_y + rr_height + 50
-    draw.rectangle([50, rsi_y, 50+rsi_width, rsi_y+rsi_height], fill=(30,30,30))
-    val = int(rsi_height * (1 - rsi/100))
-    draw.line([50, rsi_y+val, 50+rsi_width, rsi_y+val], fill=(0,200,255))
 
     # Кнопки
     buttons = ["🟢 Spot BUY", "🔴 Spot SELL", "📈 Futures LONG", "📉 Futures SHORT", "📊 Open Chart"]
@@ -176,21 +153,23 @@ def analyze_market():
             if any(pd.isna(x) for x in [rsi, ema, atr, vol_avg, macd]):
                 continue
 
-            # Фильтр по телу свечи
             candle_body = abs(df['c'].iloc[-1]-df['o'].iloc[-1])
-            if candle_body < 0.5*atr:
+            if candle_body < 0.5*atr or vol <= vol_avg:
                 continue
 
-            # LONG
-            if rsi<30 and price>ema and atr>price*0.003 and vol>vol_avg and macd>0:
+            if rsi<30 and price>ema and macd>0:
                 send_signal(symbol, "BUY", price, atr, rsi)
-            # SHORT
-            if rsi>70 and price<ema and atr>price*0.003 and vol>vol_avg and macd<0:
+            if rsi>70 and price<ema and macd<0:
                 send_signal(symbol, "SELL", price, atr, rsi)
 
             time.sleep(0.5)
         except Exception as e:
             logger.error(f"Ошибка анализа {symbol}: {e}")
+
+def loop_analyze():
+    while True:
+        analyze_market()
+        time.sleep(300)
 
 # --- Flask ---
 app = Flask(__name__)
@@ -198,10 +177,10 @@ app = Flask(__name__)
 def home():
     return "VIP Бот работает"
 
-# --- Команды Telegram ---
+# --- Команды ---
 @bot.message_handler(commands=['status'])
 def cmd_status(m):
-    bot.reply_to(m, "🤖 VIP Шкура в ТОПЕ, Ищу пару шкур по USDT!")
+    bot.reply_to(m, "🤖 VIP Бот онлайн, сканирует все пары USDT!")
 
 @bot.message_handler(commands=['report'])
 def cmd_report(m):
@@ -224,9 +203,7 @@ def cmd_history(m):
 
 # --- Запуск ---
 if __name__ == "__main__":
-    Thread(target=lambda:(time.sleep(5), analyze_market()), daemon=True).start()
-    port = int(os.environ.get("PORT",8080))
-    Thread(target=lambda: app.run(host='0.0.0.0',port=port,use_reloader=False), daemon=True).start()
+    Thread(target=loop_analyze, daemon=True).start()
     while True:
         try:
             bot.polling(non_stop=True, interval=3, timeout=20)
