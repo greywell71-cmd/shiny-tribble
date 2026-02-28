@@ -13,27 +13,19 @@ from io import BytesIO
 import requests
 
 # --- Настройки ---
-TOKEN = '8758242353:AAGiH1xfNuyGduYiupjpa4gYlodNDMM7LMk'
-CHAT_ID = '737143225'
+TOKEN = "8758242353:AAGiH1xfNuyGduYiupjpa4gYlodNDMM7LMk"
+CHAT_ID = "737143225"
 ICON_FOLDER = './icons/'
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-def force_reset():
-    try:
-        requests.get(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=True", timeout=10)
-        logger.info("Сессия Telegram очищена.")
-    except Exception as e:
-        logger.error(f"Ошибка сброса webhook: {e}")
-force_reset()
 
 bot = telebot.TeleBot(TOKEN)
 exchange = ccxt.binance({'enableRateLimit': True})
 lock = Lock()
 state = {'sent_signals': {}, 'last_direction': {}, 'history': {}}
 
-# --- Функция генерации VIP PNG ---
+# --- Генерация VIP PNG ---
 def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
     WIDTH, HEIGHT = 1024, 1024
     BG_COLOR = (18, 18, 18)
@@ -51,10 +43,8 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     except:
         font_large = font_medium = font_small = ImageFont.load_default()
 
-    # Заголовок
     draw.text((50,40), f"VIP SIGNAL {signal} {symbol}", fill=HIGHLIGHT_COLOR, font=font_large)
 
-    # Основные данные
     y = 160
     data = {"Entry": entry, "TP1": tp1, "TP2": tp2, "TP3": tp3, "SL": sl, "RSI": rsi, "ATR": atr, "TF": tf, "R/R": rr}
     for k,v in data.items():
@@ -119,12 +109,10 @@ def send_signal(symbol, signal, price, atr, rsi):
     image = generate_vip_png(symbol, signal, entry_price, tp1, tp2, tp3, sl_price, round(rsi,2), round(atr,4), tf, rr_ratio)
     bot.send_photo(CHAT_ID, photo=image, caption=f"🔔 VIP сигнал {signal} {symbol}", reply_markup=markup)
 
-    # Логируем историю
     state['history'][symbol].append({'signal':signal,'entry':entry_price,'tp1':tp1,'tp2':tp2,'tp3':tp3,'sl':sl_price,'time':now})
 
 # --- Анализ рынка ---
 def analyze_market():
-    logger.info(">>> Сканирование всех USDT-пар...")
     try:
         markets = exchange.load_markets()
         symbols_to_scan = [s for s in markets if '/USDT' in s]
@@ -177,7 +165,7 @@ app = Flask(__name__)
 def home():
     return "VIP Бот работает"
 
-# --- Команды ---
+# --- Команды Telegram ---
 @bot.message_handler(commands=['status'])
 def cmd_status(m):
     bot.reply_to(m, "🤖 VIP Бот онлайн, сканирует все пары USDT!")
@@ -201,12 +189,10 @@ def cmd_history(m):
                 msg += f"  - {sig['signal']} Entry:{sig['entry']} TP1:{sig['tp1']} SL:{sig['sl']}\n"
     bot.send_message(m.chat.id, msg)
 
-# --- Запуск ---
+# --- Запуск на Render ---
 if __name__ == "__main__":
     Thread(target=loop_analyze, daemon=True).start()
-    while True:
-        try:
-            bot.polling(non_stop=True, interval=3, timeout=20)
-        except Exception as e:
-            logger.error(f"Ошибка polling: {e}")
-            time.sleep(5)
+    Thread(target=lambda: bot.polling(non_stop=True, interval=3, timeout=20), daemon=True).start()
+
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port, use_reloader=False)
