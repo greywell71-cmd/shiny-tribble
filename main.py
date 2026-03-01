@@ -208,7 +208,7 @@ def analyze_market():
 
             # Условия сигнала (ослаблены для теста: RSI <35 вместо 30, >65 вместо 70; убрал macd >0/<0 для частоты)
             # Если сигналы всё равно редкие - уберите фильтр по vol/candle_body временно
-            if rsi < 35 and price > ema:  # and macd > 0:  # закомментировал macd для теста
+            if rsi < 50 and price > ema:  # and macd > 0:  # закомментировал macd для теста
                 send_signal(symbol, "BUY", price, atr, rsi)
             if rsi > 65 and price < ema:  # and macd < 0:
                 send_signal(symbol, "SELL", price, atr, rsi)
