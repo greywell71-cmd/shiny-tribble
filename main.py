@@ -7,7 +7,6 @@ import pandas_ta as ta
 import pandas as pd
 from flask import Flask
 from threading import Thread, Lock
-from telebot import types
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 
@@ -15,7 +14,7 @@ from io import BytesIO
 TOKEN = "8758242353:AAG5DoNU8Im5TXaXFeeWgHSj1_nSB4OwblI"
 CHAT_ID = "737143225"
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 bot = telebot.TeleBot(TOKEN)
@@ -44,7 +43,7 @@ SYMBOLS_TO_SCAN = [
     'BCH/USDT', 'THETA/USDT', 'FTM/USDT', 'STX/USDT', 'ATOM/USDT',
 ]
 
-# Картинка — только график (бары + круговая диаграмма)
+# Картинка — только график
 def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
     WIDTH, HEIGHT = 1024, 1024
     
@@ -57,7 +56,6 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     img = Image.new("RGB", (WIDTH, HEIGHT))
     draw = ImageDraw.Draw(img, "RGBA")
 
-    # Градиентный фон
     for y in range(HEIGHT):
         r = int(BG_START[0] + (BG_END[0] - BG_START[0]) * y / HEIGHT)
         g = int(BG_START[1] + (BG_END[1] - BG_START[1]) * y / HEIGHT)
@@ -67,11 +65,9 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     font_large  = ImageFont.load_default()
     font_medium = ImageFont.load_default()
 
-    # Заголовок
     title = f"PREMIUM {signal} {symbol}"
     draw.text((80, 40), title, fill=GOLD, font=font_large)
 
-    # Бар-чарт
     bar_y = 200
     bar_heights = [500, 650, 800, 950, 1100]
     bar_x = 80
@@ -80,7 +76,6 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
         color = ACCENT if i % 2 == 0 else (200, 150, 50)
         draw.rectangle([bar_x + i*140, bar_y - h, bar_x + i*140 + 100, bar_y], fill=color, outline=GOLD, width=8)
 
-    # Круговая диаграмма
     circle_x, circle_y = WIDTH - 450, 250
     draw.ellipse([circle_x, circle_y, circle_x+350, circle_y+350], outline=GOLD, width=10)
     draw.pieslice([circle_x, circle_y, circle_x+350, circle_y+350], 0, 170, fill=ACCENT)
@@ -92,7 +87,7 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     output.seek(0)
     return output
 
-# Отправка сигнала — картинка + цветной текст с эмодзи
+# Отправка сигнала — картинка + цветной текст с эмодзи (без кнопок)
 def send_signal(symbol, signal, price, atr, rsi):
     now = time.time()
     with lock:
@@ -111,16 +106,9 @@ def send_signal(symbol, signal, price, atr, rsi):
     sl = round(price - atr * 1.2 if signal == "BUY" else price + atr * 1.2, 4)
 
     symbol_bin = symbol.replace("/", "")
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        types.InlineKeyboardButton("Spot BUY", url=f"https://www.binance.com/en/trade/{symbol_bin}?type=spot"),
-        types.InlineKeyboardButton("Spot SELL", url=f"https://www.binance.com/en/trade/{symbol_bin}?type=spot"),
-        types.InlineKeyboardButton("Futures LONG", url=f"https://www.binance.com/en/futures/{symbol_bin}"),
-        types.InlineKeyboardButton("Futures SHORT", url=f"https://www.binance.com/en/futures/{symbol_bin}"),
-    )
 
-    # Цветной блок с эмодзи и выделением
-    bg_color = "#006400" if signal == "BUY" else "#8B0000"  # тёмно-зелёный / тёмно-красный
+    # Цветной выделенный текст с эмодзи
+    bg_color = "#006400" if signal == "BUY" else "#8B0000"  # зелёный / красный
     emoji = "🚀" if signal == "BUY" else "📉"
     params_text = (
         f"<b>🔔 PREMIUM {signal} {symbol} {emoji}</b>\n\n"
@@ -134,13 +122,18 @@ def send_signal(symbol, signal, price, atr, rsi):
         f"<b>💹 ATR:</b> {round(atr, 4)}\n"
         f"<b>⏱️ TF:</b> 1h\n"
         f"<b>⚖️ R/R:</b> 1:2+"
-        f"</div>"
+        f"</div>\n\n"
+        f"🔗 Перейти к торговле:\n"
+        f"• Spot BUY: https://www.binance.com/en/trade/{symbol_bin}?type=spot\n"
+        f"• Spot SELL: https://www.binance.com/en/trade/{symbol_bin}?type=spot\n"
+        f"• Futures LONG: https://www.binance.com/en/futures/{symbol_bin}\n"
+        f"• Futures SHORT: https://www.binance.com/en/futures/{symbol_bin}"
     )
 
     try:
         img = generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, round(rsi,1), round(atr,4), "1h", "1:2+")
         bot.send_photo(CHAT_ID, photo=img)
-        bot.send_message(CHAT_ID, params_text, parse_mode="HTML", reply_markup=markup)
+        bot.send_message(CHAT_ID, params_text, parse_mode="HTML")
         state["history"][symbol].append({"signal": signal, "entry": entry, "time": now})
         logger.info(f"Сигнал отправлен: {symbol} {signal}")
     except Exception as e:
@@ -160,7 +153,7 @@ def safe_fetch_ohlcv(symbol):
 
 # Анализ рынка
 def analyze_market():
-    tf = "1h"  # фиксируем
+    tf = "1h"
     logger.info("Начало цикла анализа...")
     for symbol in SYMBOLS_TO_SCAN:
         try:
