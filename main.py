@@ -43,7 +43,7 @@ SYMBOLS_TO_SCAN = [
     'BCH/USDT', 'THETA/USDT', 'FTM/USDT', 'STX/USDT', 'ATOM/USDT',
 ]
 
-# Картинка — только график
+# Картинка — только график (бары + круговая диаграмма)
 def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
     WIDTH, HEIGHT = 1024, 1024
     
@@ -87,7 +87,7 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     output.seek(0)
     return output
 
-# Отправка сигнала — картинка + цветной текст с эмодзи (без кнопок)
+# Отправка сигнала — картинка + цветной текст с эмодзи и ссылками
 def send_signal(symbol, signal, price, atr, rsi):
     now = time.time()
     with lock:
@@ -108,7 +108,7 @@ def send_signal(symbol, signal, price, atr, rsi):
     symbol_bin = symbol.replace("/", "")
 
     # Цветной выделенный текст с эмодзи
-    bg_color = "#006400" if signal == "BUY" else "#8B0000"  # зелёный / красный
+    bg_color = "#006400" if signal == "BUY" else "#8B0000"
     emoji = "🚀" if signal == "BUY" else "📉"
     params_text = (
         f"<b>🔔 PREMIUM {signal} {symbol} {emoji}</b>\n\n"
@@ -124,10 +124,10 @@ def send_signal(symbol, signal, price, atr, rsi):
         f"<b>⚖️ R/R:</b> 1:2+"
         f"</div>\n\n"
         f"🔗 Перейти к торговле:\n"
-        f"• Spot BUY: https://www.binance.com/en/trade/{symbol_bin}?type=spot\n"
-        f"• Spot SELL: https://www.binance.com/en/trade/{symbol_bin}?type=spot\n"
-        f"• Futures LONG: https://www.binance.com/en/futures/{symbol_bin}\n"
-        f"• Futures SHORT: https://www.binance.com/en/futures/{symbol_bin}"
+        f"• Spot BUY → https://www.binance.com/en/trade/{symbol_bin}?type=spot\n"
+        f"• Spot SELL → https://www.binance.com/en/trade/{symbol_bin}?type=spot\n"
+        f"• Futures LONG → https://www.binance.com/en/futures/{symbol_bin}\n"
+        f"• Futures SHORT → https://www.binance.com/en/futures/{symbol_bin}"
     )
 
     try:
