@@ -44,13 +44,13 @@ SYMBOLS_TO_SCAN = [
     'BCH/USDT', 'THETA/USDT', 'FTM/USDT', 'STX/USDT', 'ATOM/USDT',
 ]
 
-# VIP-картинка — Gold Premium
+# Gold Premium картинка (исправлена textsize → textbbox)
 def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
     WIDTH, HEIGHT = 1024, 1024
-    BG_COLOR = (15, 15, 20)          # почти чёрный
-    GOLD = (255, 215, 0)             # классическое золото
-    DARK_GOLD = (184, 134, 11)       # для теней/обводки
-    TEXT_COLOR = (240, 240, 240)     # светло-серый/белый
+    BG_COLOR = (15, 15, 20)
+    GOLD = (255, 215, 0)
+    DARK_GOLD = (184, 134, 11)
+    TEXT_COLOR = (240, 240, 240)
     BORDER_COLOR = GOLD
 
     img = Image.new("RGB", (WIDTH, HEIGHT), BG_COLOR)
@@ -60,7 +60,7 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     font_medium = ImageFont.load_default()
     font_small = ImageFont.load_default()
 
-    # Золотая рамка по всему изображению
+    # Золотая рамка
     border_width = 8
     draw.rectangle(
         [border_width, border_width, WIDTH - border_width, HEIGHT - border_width],
@@ -68,14 +68,14 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
         width=border_width
     )
 
-    # Заголовок PREMIUM + сигнал
+    # Заголовок
     title = f"PREMIUM {signal}"
     draw.text((100, 100), title, fill=GOLD, font=font_large)
 
     # Название пары
     draw.text((100, 180), f"{symbol} VIP SIGNAL", fill=TEXT_COLOR, font=font_large)
 
-    # Основные параметры
+    # Параметры
     y = 280
     data = {
         "Entry": entry,
@@ -92,7 +92,7 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
         draw.text((100, y), f"{key}: {value}", fill=TEXT_COLOR, font=font_medium)
         y += 70
 
-    # Кнопки внизу (золотые)
+    # Кнопки
     buttons = ["Spot BUY", "Spot SELL", "Futures LONG", "Futures SHORT"]
     button_width = 220
     button_height = 80
@@ -101,16 +101,20 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
 
     for i, btn_text in enumerate(buttons):
         x = 100 + i * (button_width + gap)
-        # Золотой фон для активной кнопки
         btn_color = GOLD if (("BUY" in btn_text and signal == "BUY") or ("SELL" in btn_text and signal == "SELL")) else (60, 60, 60)
+
         draw.rectangle(
             [x, y_button, x + button_width, y_button + button_height],
             fill=btn_color,
             outline=DARK_GOLD,
             width=3
         )
-        # Текст кнопки чёрный на золотом
-        w, h = draw.textsize(btn_text, font=font_small)
+
+        # Современный расчёт размера текста (замена textsize)
+        bbox = draw.textbbox((0, 0), btn_text, font=font_small)
+        w = bbox[2] - bbox[0]
+        h = bbox[3] - bbox[1]
+
         draw.text(
             (x + (button_width - w) // 2, y_button + (button_height - h) // 2),
             btn_text,
@@ -118,7 +122,7 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
             font=font_small
         )
 
-    # Премиум-метка с короной в правом верхнем углу
+    # Премиум-метка с короной
     draw.text((WIDTH - 380, 100), "♛ PREMIUM ACCESS ♛", fill=GOLD, font=font_medium)
 
     output = BytesIO()
@@ -173,7 +177,7 @@ def safe_fetch_ohlcv(symbol):
         logger.error(f"{symbol} fetch error: {e}")
         return None
 
-# Анализ рынка
+# Анализ
 def analyze_market():
     logger.info("Начало цикла анализа...")
     for symbol in SYMBOLS_TO_SCAN:
@@ -205,7 +209,6 @@ def analyze_market():
                 if len(state["debug_log"][symbol]) > 10:
                     state["debug_log"][symbol].pop(0)
 
-            # Условия (ослабленные для теста)
             if rsi < 55 and price > ema:
                 send_signal(symbol, "BUY", price, atr, rsi)
             if rsi > 45 and price < ema:
@@ -221,14 +224,12 @@ def loop_analyze():
         analyze_market()
         time.sleep(300)
 
-# Flask
 app = Flask(__name__)
 
 @app.route("/")
 def home():
     return "Бот работает"
 
-# Базовые команды
 @bot.message_handler(commands=["status"])
 def cmd_status(m):
     try:
@@ -262,7 +263,6 @@ def cmd_debug(m):
     except Exception as e:
         logger.error(f"Ошибка /debug: {e}")
 
-# Запуск
 if __name__ == "__main__":
     Thread(target=loop_analyze, daemon=True).start()
     Thread(target=lambda: bot.polling(non_stop=True, interval=3, timeout=30), daemon=True).start()
