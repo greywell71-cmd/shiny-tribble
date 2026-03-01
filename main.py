@@ -44,86 +44,89 @@ SYMBOLS_TO_SCAN = [
     'BCH/USDT', 'THETA/USDT', 'FTM/USDT', 'STX/USDT', 'ATOM/USDT',
 ]
 
-# Вариант 2: Gold Premium — люксовый золотой дизайн
+# Gold Premium картинка — крупный текст, график выделен, список внизу
 def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
-    WIDTH, HEIGHT = 1024, 1024
-    BG_COLOR = (15, 15, 20)          # почти чёрный
-    GOLD = (255, 215, 0)             # классическое золото
-    DARK_GOLD = (184, 134, 11)       # для теней/обводки
-    TEXT_COLOR = (240, 240, 240)     # светло-серый/белый
-    BORDER_COLOR = GOLD
+    WIDTH, HEIGHT = 1024, 1400
+    
+    BG_START = (5, 5, 25)
+    BG_END   = (30, 15, 70)
+    GOLD     = (255, 215, 0)
+    ACCENT   = (255, 180, 0) if signal == "BUY" else (255, 80, 120)
+    TEXT     = (255, 255, 255)
 
-    img = Image.new("RGB", (WIDTH, HEIGHT), BG_COLOR)
-    draw = ImageDraw.Draw(img)
+    img = Image.new("RGB", (WIDTH, HEIGHT))
+    draw = ImageDraw.Draw(img, "RGBA")
 
-    font_large = ImageFont.load_default()
+    # Градиентный фон
+    for y in range(HEIGHT):
+        r = int(BG_START[0] + (BG_END[0] - BG_START[0]) * y / HEIGHT)
+        g = int(BG_START[1] + (BG_END[1] - BG_START[1]) * y / HEIGHT)
+        b = int(BG_START[2] + (BG_END[2] - BG_START[2]) * y / HEIGHT)
+        draw.line([(0, y), (WIDTH, y)], fill=(r, g, b))
+
+    font_large  = ImageFont.load_default()
     font_medium = ImageFont.load_default()
-    font_small = ImageFont.load_default()
 
-    # Золотая рамка по всему изображению
-    border_width = 8
-    draw.rectangle(
-        [border_width, border_width, WIDTH - border_width, HEIGHT - border_width],
-        outline=BORDER_COLOR,
-        width=border_width
-    )
+    # Заголовок крупный
+    title = f"PREMIUM {signal} {symbol}"
+    draw.text((80, 40), title, fill=GOLD, font=font_large)
 
-    # Заголовок PREMIUM + сигнал
-    title = f"PREMIUM {signal}"
-    draw.text((100, 100), title, fill=GOLD, font=font_large)
+    # ВЫДЕЛЕННЫЙ ГРАФИК (бар-чарт + круговая диаграмма) — центр внимания
+    # Бар-чарт
+    bar_y = 200
+    bar_heights = [600, 750, 900, 1050, 1200]
+    bar_x = 80
+    draw.text((80, bar_y - 80), "Revenue Growth Divisions", fill=GOLD, font=font_medium)
+    for i, h in enumerate(bar_heights):
+        color = ACCENT if i % 2 == 0 else (200, 150, 50)
+        draw.rectangle([bar_x + i*160, bar_y - h, bar_x + i*160 + 120, bar_y], fill=color, outline=GOLD, width=10)
 
-    # Название пары
-    draw.text((100, 180), f"{symbol} VIP SIGNAL", fill=TEXT_COLOR, font=font_large)
+    # Круговая диаграмма — крупная
+    circle_x, circle_y = WIDTH - 500, 250
+    draw.ellipse([circle_x, circle_y, circle_x+400, circle_y+400], outline=GOLD, width=12)
+    draw.pieslice([circle_x, circle_y, circle_x+400, circle_y+400], 0, 170, fill=ACCENT)
+    draw.pieslice([circle_x, circle_y, circle_x+400, circle_y+400], 170, 300, fill=(180, 120, 60))
+    draw.pieslice([circle_x, circle_y, circle_x+400, circle_y+400], 300, 360, fill=(80,80,140))
 
-    # Основные параметры
-    y = 280
-    data = {
-        "Entry": entry,
-        "TP1": tp1,
-        "TP2": tp2,
-        "TP3": tp3,
-        "SL": sl,
-        "RSI": round(rsi, 2),
-        "ATR": round(atr, 4),
-        "TF": tf,
-        "R/R": rr,
-    }
-    for key, value in data.items():
-        draw.text((100, y), f"{key}: {value}", fill=TEXT_COLOR, font=font_medium)
-        y += 70
+    # ПОЛНЫЙ СПИСОК ПАРАМЕТРОВ ВНИЗУ — крупный текст
+    y_list = bar_y + 350  # после графика
+    draw.text((80, y_list), "Параметры сигнала:", fill=GOLD, font=font_medium)
+    y_list += 80
 
-    # Кнопки внизу (золотые)
+    data = [
+        ("Entry", f"{entry:.4f}"),
+        ("TP1",   f"{tp1:.4f}"),
+        ("TP2",   f"{tp2:.4f}"),
+        ("TP3",   f"{tp3:.4f}"),
+        ("SL",    f"{sl:.4f}"),
+        ("RSI",   f"{round(rsi, 2)}"),
+        ("ATR",   f"{round(atr, 4)}"),
+        ("TF",    tf),
+        ("R/R",   rr),
+    ]
+    for label, value in data:
+        draw.text((80, y_list), f"{label}:", fill=ACCENT, font=font_medium)
+        draw.text((380, y_list - 10), value, fill=TEXT, font=font_large)
+        y_list += 100
+
+    # Кнопки в самом низу
     buttons = ["Spot BUY", "Spot SELL", "Futures LONG", "Futures SHORT"]
-    button_width = 220
-    button_height = 80
-    gap = 30
-    y_button = HEIGHT - 220
+    btn_w, btn_h = 300, 120
+    gap = 40
+    y_btn = HEIGHT - 300
 
-    for i, btn_text in enumerate(buttons):
-        x = 100 + i * (button_width + gap)
-        btn_color = GOLD if (("BUY" in btn_text and signal == "BUY") or ("SELL" in btn_text and signal == "SELL")) else (60, 60, 60)
+    for i, text in enumerate(buttons):
+        x = 80 + i * (btn_w + gap)
+        color = ACCENT if (("BUY" in text and signal == "BUY") or ("SELL" in text and signal == "SELL")) else (60, 60, 100)
+        draw.rounded_rectangle([x, y_btn, x+btn_w, y_btn+btn_h], radius=40, fill=color, outline=GOLD, width=8)
 
-        draw.rectangle(
-            [x, y_button, x + button_width, y_button + button_height],
-            fill=btn_color,
-            outline=DARK_GOLD,
-            width=3
-        )
-
-        # Современный расчёт размера текста (textbbox вместо textsize)
-        bbox = draw.textbbox((0, 0), btn_text, font=font_small)
+        bbox = draw.textbbox((0, 0), text, font=font_medium)
         w = bbox[2] - bbox[0]
         h = bbox[3] - bbox[1]
+        draw.text((x + (btn_w - w)//2, y_btn + (btn_h - h)//2), text, fill=TEXT, font=font_medium)
 
-        draw.text(
-            (x + (button_width - w) // 2, y_button + (button_height - h) // 2),
-            btn_text,
-            fill=(0, 0, 0),
-            font=font_small
-        )
-
-    # Премиум-метка с короной в правом верхнем углу
-    draw.text((WIDTH - 380, 100), "♛ PREMIUM ACCESS ♛", fill=GOLD, font=font_medium)
+    # Премиум-надпись
+    draw.text((WIDTH//2 - 300, HEIGHT - 120), "♛ PREMIUM ACCESS ONLY ♛", fill=GOLD, font=font_large)
 
     output = BytesIO()
     img.save(output, format="PNG")
