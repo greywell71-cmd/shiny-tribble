@@ -13,7 +13,7 @@ from io import BytesIO
 
 # Настройки
 TOKEN = "8758242353:AAG5DoNU8Im5TXaXFeeWgHSj1_nSB4OwblI"
-CHAT_ID = "737143225"  # твой ID
+CHAT_ID = "737143225"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -24,13 +24,8 @@ exchange = ccxt.binance({
     "options": {"defaultType": "spot"}
 })
 lock = Lock()
-state = {
-    "sent_signals": {},
-    "history": {},
-    "debug_log": {}
-}
+state = {"sent_signals": {}, "history": {}, "debug_log": {}}
 
-# Топ-пары
 SYMBOLS_TO_SCAN = [
     'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT',
     'ADA/USDT', 'DOGE/USDT', 'AVAX/USDT', 'SHIB/USDT', 'LINK/USDT',
@@ -44,86 +39,87 @@ SYMBOLS_TO_SCAN = [
     'BCH/USDT', 'THETA/USDT', 'FTM/USDT', 'STX/USDT', 'ATOM/USDT',
 ]
 
-# Gold Premium картинка (исправлена textsize → textbbox)
+# Картинка в стиле твоего примера (тёмный фон + золотые акценты + структура)
 def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
     WIDTH, HEIGHT = 1024, 1024
-    BG_COLOR = (15, 15, 20)
-    GOLD = (255, 215, 0)
-    DARK_GOLD = (184, 134, 11)
-    TEXT_COLOR = (240, 240, 240)
-    BORDER_COLOR = GOLD
+    BG_START = (10, 10, 30)    # тёмно-синий
+    BG_END   = (40, 20, 80)    # градиент к фиолетовому
+    GOLD     = (255, 215, 0)
+    COPPER   = (184, 115, 51)
+    TEXT     = (240, 240, 255)
+    ACCENT   = (255, 180, 0) if signal == "BUY" else (255, 80, 120)
 
-    img = Image.new("RGB", (WIDTH, HEIGHT), BG_COLOR)
-    draw = ImageDraw.Draw(img)
+    img = Image.new("RGB", (WIDTH, HEIGHT))
+    draw = ImageDraw.Draw(img, "RGBA")
 
-    font_large = ImageFont.load_default()
+    # Градиентный фон
+    for y in range(HEIGHT):
+        r = int(BG_START[0] + (BG_END[0] - BG_START[0]) * y / HEIGHT)
+        g = int(BG_START[1] + (BG_END[1] - BG_START[1]) * y / HEIGHT)
+        b = int(BG_START[2] + (BG_END[2] - BG_START[2]) * y / HEIGHT)
+        draw.line([(0, y), (WIDTH, y)], fill=(r, g, b))
+
+    font_large  = ImageFont.load_default()
     font_medium = ImageFont.load_default()
-    font_small = ImageFont.load_default()
+    font_small  = ImageFont.load_default()
 
-    # Золотая рамка
-    border_width = 8
-    draw.rectangle(
-        [border_width, border_width, WIDTH - border_width, HEIGHT - border_width],
-        outline=BORDER_COLOR,
-        width=border_width
-    )
+    # Премиум-рамка
+    draw.rectangle([40, 40, WIDTH-40, HEIGHT-40], outline=GOLD, width=6)
 
     # Заголовок
-    title = f"PREMIUM {signal}"
-    draw.text((100, 100), title, fill=GOLD, font=font_large)
+    draw.text((80, 80), f"PREMIUM {signal}", fill=GOLD, font=font_large)
+    draw.text((80, 160), f"{symbol} VIP SIGNAL", fill=TEXT, font=font_large)
 
-    # Название пары
-    draw.text((100, 180), f"{symbol} VIP SIGNAL", fill=TEXT_COLOR, font=font_large)
+    # Таблица данных
+    y = 240
+    data = [
+        ("Entry", entry),
+        ("TP1", tp1), ("TP2", tp2), ("TP3", tp3),
+        ("SL", sl),
+        ("RSI", round(rsi, 2)),
+        ("ATR", round(atr, 4)),
+        ("TF", tf),
+        ("R/R", rr),
+    ]
+    for label, value in data:
+        draw.text((80, y), f"{label}:", fill=ACCENT, font=font_medium)
+        draw.text((300, y), f"{value}", fill=TEXT, font=font_medium)
+        y += 55
 
-    # Параметры
-    y = 280
-    data = {
-        "Entry": entry,
-        "TP1": tp1,
-        "TP2": tp2,
-        "TP3": tp3,
-        "SL": sl,
-        "RSI": round(rsi, 2),
-        "ATR": round(atr, 4),
-        "TF": tf,
-        "R/R": rr,
-    }
-    for key, value in data.items():
-        draw.text((100, y), f"{key}: {value}", fill=TEXT_COLOR, font=font_medium)
-        y += 70
+    # Имитация графиков (как в твоём примере)
+    # Бар-чарт (Revenue growth)
+    bar_x = 80
+    bar_y = y + 40
+    heights = [300, 450, 600, 750, 900, 1050]  # имитация роста
+    for i, h in enumerate(heights):
+        color = ACCENT if i % 2 == 0 else COPPER
+        draw.rectangle([bar_x + i*80, bar_y - h, bar_x + i*80 + 60, bar_y], fill=color)
 
-    # Кнопки
+    # Круговая диаграмма (имитация)
+    circle_x, circle_y = WIDTH - 300, 400
+    draw.ellipse([circle_x, circle_y, circle_x+200, circle_y+200], outline=GOLD, width=4)
+    draw.pieslice([circle_x, circle_y, circle_x+200, circle_y+200], 0, 120, fill=ACCENT)
+    draw.pieslice([circle_x, circle_y, circle_x+200, circle_y+200], 120, 240, fill=COPPER)
+    draw.pieslice([circle_x, circle_y, circle_x+200, circle_y+200], 240, 360, fill=(60,60,100))
+
+    # Кнопки внизу
     buttons = ["Spot BUY", "Spot SELL", "Futures LONG", "Futures SHORT"]
-    button_width = 220
-    button_height = 80
+    btn_w, btn_h = 220, 80
     gap = 30
-    y_button = HEIGHT - 220
+    y_btn = HEIGHT - 200
 
-    for i, btn_text in enumerate(buttons):
-        x = 100 + i * (button_width + gap)
-        btn_color = GOLD if (("BUY" in btn_text and signal == "BUY") or ("SELL" in btn_text and signal == "SELL")) else (60, 60, 60)
+    for i, text in enumerate(buttons):
+        x = 80 + i * (btn_w + gap)
+        color = ACCENT if (("BUY" in text and signal == "BUY") or ("SELL" in text and signal == "SELL")) else (50, 50, 80)
+        draw.rounded_rectangle([x, y_btn, x+btn_w, y_btn+btn_h], radius=20, fill=color, outline=GOLD, width=3)
 
-        draw.rectangle(
-            [x, y_button, x + button_width, y_button + button_height],
-            fill=btn_color,
-            outline=DARK_GOLD,
-            width=3
-        )
-
-        # Современный расчёт размера текста (замена textsize)
-        bbox = draw.textbbox((0, 0), btn_text, font=font_small)
+        bbox = draw.textbbox((0, 0), text, font=font_small)
         w = bbox[2] - bbox[0]
         h = bbox[3] - bbox[1]
+        draw.text((x + (btn_w - w)//2, y_btn + (btn_h - h)//2), text, fill=TEXT, font=font_small)
 
-        draw.text(
-            (x + (button_width - w) // 2, y_button + (button_height - h) // 2),
-            btn_text,
-            fill=(0, 0, 0),
-            font=font_small
-        )
-
-    # Премиум-метка с короной
-    draw.text((WIDTH - 380, 100), "♛ PREMIUM ACCESS ♛", fill=GOLD, font=font_medium)
+    # Премиум-метка
+    draw.text((WIDTH - 420, 80), "♛ PREMIUM ACCESS ♛", fill=GOLD, font=font_medium)
 
     output = BytesIO()
     img.save(output, format="PNG")
@@ -136,7 +132,6 @@ def send_signal(symbol, signal, price, atr, rsi):
     with lock:
         key = f"{symbol}_{signal}"
         if now - state["sent_signals"].get(key, 0) < 3600:
-            logger.info(f"Антиспам: {symbol} {signal} недавно отправлен")
             return
         state["sent_signals"][key] = now
         if symbol not in state["history"]:
@@ -159,18 +154,17 @@ def send_signal(symbol, signal, price, atr, rsi):
 
     try:
         img = generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, round(rsi,1), round(atr,4), "1h", "1:2+")
-        bot.send_photo(CHAT_ID, photo=img, caption=f"🔔 {signal} {symbol}\nEntry: {entry}", reply_markup=markup)
+        bot.send_photo(CHAT_ID, photo=img, caption=f"🔔 PREMIUM {signal} {symbol}", reply_markup=markup)
         state["history"][symbol].append({"signal": signal, "entry": entry, "time": now})
-        logger.info(f"СИГНАЛ ОТПРАВЛЕН → {symbol} {signal}")
+        logger.info(f"Сигнал отправлен: {symbol} {signal}")
     except Exception as e:
-        logger.error(f"Ошибка отправки сигнала {symbol}: {e}")
+        logger.error(f"Ошибка отправки {symbol}: {e}")
 
 # Безопасный fetch
 def safe_fetch_ohlcv(symbol):
     try:
         return exchange.fetch_ohlcv(symbol, "1h", limit=200)
     except ccxt.RateLimitExceeded:
-        logger.warning(f"Rate limit {symbol}, ждём 20 сек")
         time.sleep(20)
         return safe_fetch_ohlcv(symbol)
     except Exception as e:
@@ -179,7 +173,7 @@ def safe_fetch_ohlcv(symbol):
 
 # Анализ
 def analyze_market():
-    logger.info("Начало цикла анализа...")
+    logger.info("Начало анализа...")
     for symbol in SYMBOLS_TO_SCAN:
         try:
             bars = safe_fetch_ohlcv(symbol)
@@ -203,9 +197,7 @@ def analyze_market():
             logger.info(log_msg)
 
             with lock:
-                if symbol not in state["debug_log"]:
-                    state["debug_log"][symbol] = []
-                state["debug_log"][symbol].append(log_msg)
+                state["debug_log"].setdefault(symbol, []).append(log_msg)
                 if len(state["debug_log"][symbol]) > 10:
                     state["debug_log"][symbol].pop(0)
 
@@ -216,8 +208,8 @@ def analyze_market():
 
             time.sleep(0.4)
         except Exception as e:
-            logger.error(f"Анализ {symbol} ошибка: {e}")
-    logger.info("Цикл анализа завершён")
+            logger.error(f"Анализ {symbol}: {e}")
+    logger.info("Анализ завершён")
 
 def loop_analyze():
     while True:
@@ -232,36 +224,27 @@ def home():
 
 @bot.message_handler(commands=["status"])
 def cmd_status(m):
-    try:
-        bot.reply_to(m, "🤖 Бот онлайн, сканирует топ-пары")
-    except Exception as e:
-        logger.error(f"Ошибка /status: {e}")
+    bot.reply_to(m, "🤖 Бот онлайн, сканирует топ-пары")
 
 @bot.message_handler(commands=["report", "history"])
 def cmd_report(m):
-    try:
-        with lock:
-            if not state["history"]:
-                bot.reply_to(m, "Пока нет сигналов.")
-            else:
-                text = "Последние сигналы:\n"
-                for sym, hist in state["history"].items():
-                    last = hist[-1]
-                    text += f"{sym} → {last['signal']} @ {last['entry']}\n"
-                bot.reply_to(m, text)
-    except Exception as e:
-        logger.error(f"Ошибка /report: {e}")
+    with lock:
+        if not state["history"]:
+            bot.reply_to(m, "Нет сигналов пока.")
+        else:
+            text = "Последние сигналы:\n"
+            for sym, hist in state["history"].items():
+                last = hist[-1]
+                text += f"{sym} → {last['signal']} @ {last['entry']}\n"
+            bot.reply_to(m, text)
 
 @bot.message_handler(commands=["debug"])
 def cmd_debug(m):
-    try:
-        text = "Последние проверки:\n\n"
-        with lock:
-            for sym, logs in list(state["debug_log"].items())[:8]:
-                text += f"🟡 {sym}\n" + "\n".join(logs[-3:]) + "\n\n"
-        bot.reply_to(m, text or "Нет данных отладки.")
-    except Exception as e:
-        logger.error(f"Ошибка /debug: {e}")
+    text = "Последние проверки:\n\n"
+    with lock:
+        for sym, logs in list(state["debug_log"].items())[:8]:
+            text += f"🟡 {sym}\n" + "\n".join(logs[-3:]) + "\n\n"
+    bot.reply_to(m, text or "Нет данных.")
 
 if __name__ == "__main__":
     Thread(target=loop_analyze, daemon=True).start()
