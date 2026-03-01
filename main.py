@@ -44,9 +44,9 @@ SYMBOLS_TO_SCAN = [
     'BCH/USDT', 'THETA/USDT', 'FTM/USDT', 'STX/USDT', 'ATOM/USDT',
 ]
 
-# Gold Premium картинка — крупный текст, график выделен, список внизу
+# Картинка — график в стиле твоего примера (бары + круговая диаграмма)
 def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
-    WIDTH, HEIGHT = 1024, 1400
+    WIDTH, HEIGHT = 1024, 1024
     
     BG_START = (5, 5, 25)
     BG_END   = (30, 15, 70)
@@ -67,73 +67,33 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     font_large  = ImageFont.load_default()
     font_medium = ImageFont.load_default()
 
-    # Заголовок крупный
+    # Заголовок
     title = f"PREMIUM {signal} {symbol}"
     draw.text((80, 40), title, fill=GOLD, font=font_large)
 
-    # ВЫДЕЛЕННЫЙ ГРАФИК (бар-чарт + круговая диаграмма) — центр внимания
+    # ВЫДЕЛЕННЫЙ ГРАФИК — центр картинки
     # Бар-чарт
     bar_y = 200
-    bar_heights = [600, 750, 900, 1050, 1200]
+    bar_heights = [500, 650, 800, 950, 1100]
     bar_x = 80
-    draw.text((80, bar_y - 80), "Revenue Growth Divisions", fill=GOLD, font=font_medium)
+    draw.text((80, bar_y - 80), "Revenue Growth", fill=GOLD, font=font_medium)
     for i, h in enumerate(bar_heights):
         color = ACCENT if i % 2 == 0 else (200, 150, 50)
-        draw.rectangle([bar_x + i*160, bar_y - h, bar_x + i*160 + 120, bar_y], fill=color, outline=GOLD, width=10)
+        draw.rectangle([bar_x + i*140, bar_y - h, bar_x + i*140 + 100, bar_y], fill=color, outline=GOLD, width=8)
 
-    # Круговая диаграмма — крупная
-    circle_x, circle_y = WIDTH - 500, 250
-    draw.ellipse([circle_x, circle_y, circle_x+400, circle_y+400], outline=GOLD, width=12)
-    draw.pieslice([circle_x, circle_y, circle_x+400, circle_y+400], 0, 170, fill=ACCENT)
-    draw.pieslice([circle_x, circle_y, circle_x+400, circle_y+400], 170, 300, fill=(180, 120, 60))
-    draw.pieslice([circle_x, circle_y, circle_x+400, circle_y+400], 300, 360, fill=(80,80,140))
-
-    # ПОЛНЫЙ СПИСОК ПАРАМЕТРОВ ВНИЗУ — крупный текст
-    y_list = bar_y + 350  # после графика
-    draw.text((80, y_list), "Параметры сигнала:", fill=GOLD, font=font_medium)
-    y_list += 80
-
-    data = [
-        ("Entry", f"{entry:.4f}"),
-        ("TP1",   f"{tp1:.4f}"),
-        ("TP2",   f"{tp2:.4f}"),
-        ("TP3",   f"{tp3:.4f}"),
-        ("SL",    f"{sl:.4f}"),
-        ("RSI",   f"{round(rsi, 2)}"),
-        ("ATR",   f"{round(atr, 4)}"),
-        ("TF",    tf),
-        ("R/R",   rr),
-    ]
-    for label, value in data:
-        draw.text((80, y_list), f"{label}:", fill=ACCENT, font=font_medium)
-        draw.text((380, y_list - 10), value, fill=TEXT, font=font_large)
-        y_list += 100
-
-    # Кнопки в самом низу
-    buttons = ["Spot BUY", "Spot SELL", "Futures LONG", "Futures SHORT"]
-    btn_w, btn_h = 300, 120
-    gap = 40
-    y_btn = HEIGHT - 300
-
-    for i, text in enumerate(buttons):
-        x = 80 + i * (btn_w + gap)
-        color = ACCENT if (("BUY" in text and signal == "BUY") or ("SELL" in text and signal == "SELL")) else (60, 60, 100)
-        draw.rounded_rectangle([x, y_btn, x+btn_w, y_btn+btn_h], radius=40, fill=color, outline=GOLD, width=8)
-
-        bbox = draw.textbbox((0, 0), text, font=font_medium)
-        w = bbox[2] - bbox[0]
-        h = bbox[3] - bbox[1]
-        draw.text((x + (btn_w - w)//2, y_btn + (btn_h - h)//2), text, fill=TEXT, font=font_medium)
-
-    # Премиум-надпись
-    draw.text((WIDTH//2 - 300, HEIGHT - 120), "♛ PREMIUM ACCESS ONLY ♛", fill=GOLD, font=font_large)
+    # Круговая диаграмма — крупная справа
+    circle_x, circle_y = WIDTH - 450, 250
+    draw.ellipse([circle_x, circle_y, circle_x+350, circle_y+350], outline=GOLD, width=10)
+    draw.pieslice([circle_x, circle_y, circle_x+350, circle_y+350], 0, 170, fill=ACCENT)
+    draw.pieslice([circle_x, circle_y, circle_x+350, circle_y+350], 170, 300, fill=(180, 120, 60))
+    draw.pieslice([circle_x, circle_y, circle_x+350, circle_y+350], 300, 360, fill=(80,80,140))
 
     output = BytesIO()
     img.save(output, format="PNG")
     output.seek(0)
     return output
 
-# Отправка сигнала
+# Отправка сигнала — картинка + отдельный текст со списком параметров
 def send_signal(symbol, signal, price, atr, rsi):
     now = time.time()
     with lock:
@@ -160,9 +120,24 @@ def send_signal(symbol, signal, price, atr, rsi):
         types.InlineKeyboardButton("Futures SHORT", url=f"https://www.binance.com/en/futures/{symbol_bin}"),
     )
 
+    # Полный список параметров — отдельно текстом под картинкой
+    params_text = (
+        f"🔔 PREMIUM {signal} {symbol}\n\n"
+        f"Entry: {entry:.4f}\n"
+        f"TP1: {tp1:.4f}\n"
+        f"TP2: {tp2:.4f}\n"
+        f"TP3: {tp3:.4f}\n"
+        f"SL: {sl:.4f}\n"
+        f"RSI: {round(rsi, 2)}\n"
+        f"ATR: {round(atr, 4)}\n"
+        f"TF: {tf}\n"
+        f"R/R: {rr}"
+    )
+
     try:
         img = generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, round(rsi,1), round(atr,4), "1h", "1:2+")
-        bot.send_photo(CHAT_ID, photo=img, caption=f"🔔 PREMIUM {signal} {symbol}", reply_markup=markup)
+        bot.send_photo(CHAT_ID, photo=img)
+        bot.send_message(CHAT_ID, params_text, reply_markup=markup)
         state["history"][symbol].append({"signal": signal, "entry": entry, "time": now})
         logger.info(f"Сигнал отправлен: {symbol} {signal}")
     except Exception as e:
