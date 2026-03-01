@@ -119,7 +119,7 @@ def send_signal(symbol, signal, price, atr, rsi):
         types.InlineKeyboardButton("Futures SHORT", url=f"https://www.binance.com/en/futures/{symbol_bin}"),
     )
 
-    # Цветной блок с эмодзи
+    # Цветной блок с эмодзи и выделением
     bg_color = "#006400" if signal == "BUY" else "#8B0000"  # тёмно-зелёный / тёмно-красный
     emoji = "🚀" if signal == "BUY" else "📉"
     params_text = (
@@ -160,7 +160,7 @@ def safe_fetch_ohlcv(symbol):
 
 # Анализ рынка
 def analyze_market():
-    tf = "1h"  # явно фиксируем
+    tf = "1h"  # фиксируем
     logger.info("Начало цикла анализа...")
     for symbol in SYMBOLS_TO_SCAN:
         try:
