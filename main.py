@@ -13,7 +13,7 @@ from io import BytesIO
 
 # Настройки
 TOKEN = "8758242353:AAG5DoNU8Im5TXaXFeeWgHSj1_nSB4OwblI"
-CHAT_ID = "737143225"
+CHAT_ID = "737143225"  # твой ID
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -24,8 +24,13 @@ exchange = ccxt.binance({
     "options": {"defaultType": "spot"}
 })
 lock = Lock()
-state = {"sent_signals": {}, "history": {}, "debug_log": {}}
+state = {
+    "sent_signals": {},
+    "history": {},
+    "debug_log": {}
+}
 
+# Топ-пары
 SYMBOLS_TO_SCAN = [
     'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT',
     'ADA/USDT', 'DOGE/USDT', 'AVAX/USDT', 'SHIB/USDT', 'LINK/USDT',
@@ -39,15 +44,15 @@ SYMBOLS_TO_SCAN = [
     'BCH/USDT', 'THETA/USDT', 'FTM/USDT', 'STX/USDT', 'ATOM/USDT',
 ]
 
-# Картинка в стиле твоего примера (тёмный фон + золотые акценты + структура)
+# Gold Premium картинка — крупный текст, кнопки с deeplink в приложение Binance
 def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
-    WIDTH, HEIGHT = 1024, 1024
-    BG_START = (10, 10, 30)    # тёмно-синий
-    BG_END   = (40, 20, 80)    # градиент к фиолетовому
+    WIDTH, HEIGHT = 1024, 1200
+    
+    BG_START = (5, 5, 25)
+    BG_END   = (30, 15, 70)
     GOLD     = (255, 215, 0)
-    COPPER   = (184, 115, 51)
-    TEXT     = (240, 240, 255)
     ACCENT   = (255, 180, 0) if signal == "BUY" else (255, 80, 120)
+    TEXT     = (255, 255, 255)
 
     img = Image.new("RGB", (WIDTH, HEIGHT))
     draw = ImageDraw.Draw(img, "RGBA")
@@ -63,63 +68,54 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     font_medium = ImageFont.load_default()
     font_small  = ImageFont.load_default()
 
-    # Премиум-рамка
-    draw.rectangle([40, 40, WIDTH-40, HEIGHT-40], outline=GOLD, width=6)
+    # Крупный заголовок по центру
+    title = f"PREMIUM {signal} {symbol}"
+    draw.text((80, 40), title, fill=GOLD, font=font_large)
+    for dx, dy in [(-6,-6), (6,-6), (-6,6), (6,6)]:
+        draw.text((80 + dx, 40 + dy), title, fill=(GOLD[0]//2, GOLD[1]//2, GOLD[2]//2), font=font_large)
 
-    # Заголовок
-    draw.text((80, 80), f"PREMIUM {signal}", fill=GOLD, font=font_large)
-    draw.text((80, 160), f"{symbol} VIP SIGNAL", fill=TEXT, font=font_large)
-
-    # Таблица данных
-    y = 240
+    # Крупные данные — основная информация внутри картинки
+    y = 220
     data = [
-        ("Entry", entry),
-        ("TP1", tp1), ("TP2", tp2), ("TP3", tp3),
-        ("SL", sl),
-        ("RSI", round(rsi, 2)),
-        ("ATR", round(atr, 4)),
-        ("TF", tf),
-        ("R/R", rr),
+        ("Entry", f"{entry:.4f}"),
+        ("TP1",   f"{tp1:.4f}"),
+        ("TP2",   f"{tp2:.4f}"),
+        ("TP3",   f"{tp3:.4f}"),
+        ("SL",    f"{sl:.4f}"),
+        ("RSI",   f"{round(rsi, 2)}"),
+        ("ATR",   f"{round(atr, 4)}"),
+        ("TF",    tf),
+        ("R/R",   rr),
     ]
     for label, value in data:
         draw.text((80, y), f"{label}:", fill=ACCENT, font=font_medium)
-        draw.text((300, y), f"{value}", fill=TEXT, font=font_medium)
-        y += 55
+        draw.text((380, y - 10), value, fill=TEXT, font=font_large)
+        draw.text((384, y - 6), value, fill=(0,0,0,140), font=font_large)
+        y += 110
 
-    # Имитация графиков (как в твоём примере)
-    # Бар-чарт (Revenue growth)
-    bar_x = 80
-    bar_y = y + 40
-    heights = [300, 450, 600, 750, 900, 1050]  # имитация роста
-    for i, h in enumerate(heights):
-        color = ACCENT if i % 2 == 0 else COPPER
-        draw.rectangle([bar_x + i*80, bar_y - h, bar_x + i*80 + 60, bar_y], fill=color)
+    # Крупные кнопки с deeplink в приложение Binance
+    buttons = [
+        ("Spot BUY",   f"binance://app/trade?symbol={symbol.replace('/', '')}"),
+        ("Spot SELL",  f"binance://app/trade?symbol={symbol.replace('/', '')}"),
+        ("Futures LONG",  f"binance://app/futures/trade?symbol={symbol.replace('/', '')}"),
+        ("Futures SHORT", f"binance://app/futures/trade?symbol={symbol.replace('/', '')}")
+    ]
+    btn_w, btn_h = 300, 120
+    gap = 40
+    y_btn = HEIGHT - 300
 
-    # Круговая диаграмма (имитация)
-    circle_x, circle_y = WIDTH - 300, 400
-    draw.ellipse([circle_x, circle_y, circle_x+200, circle_y+200], outline=GOLD, width=4)
-    draw.pieslice([circle_x, circle_y, circle_x+200, circle_y+200], 0, 120, fill=ACCENT)
-    draw.pieslice([circle_x, circle_y, circle_x+200, circle_y+200], 120, 240, fill=COPPER)
-    draw.pieslice([circle_x, circle_y, circle_x+200, circle_y+200], 240, 360, fill=(60,60,100))
-
-    # Кнопки внизу
-    buttons = ["Spot BUY", "Spot SELL", "Futures LONG", "Futures SHORT"]
-    btn_w, btn_h = 220, 80
-    gap = 30
-    y_btn = HEIGHT - 200
-
-    for i, text in enumerate(buttons):
+    for i, (text, url) in enumerate(buttons):
         x = 80 + i * (btn_w + gap)
-        color = ACCENT if (("BUY" in text and signal == "BUY") or ("SELL" in text and signal == "SELL")) else (50, 50, 80)
-        draw.rounded_rectangle([x, y_btn, x+btn_w, y_btn+btn_h], radius=20, fill=color, outline=GOLD, width=3)
+        color = ACCENT if (("BUY" in text and signal == "BUY") or ("SELL" in text and signal == "SELL")) else (60, 60, 100)
+        draw.rounded_rectangle([x, y_btn, x+btn_w, y_btn+btn_h], radius=40, fill=color, outline=GOLD, width=8)
 
-        bbox = draw.textbbox((0, 0), text, font=font_small)
+        bbox = draw.textbbox((0, 0), text, font=font_medium)
         w = bbox[2] - bbox[0]
         h = bbox[3] - bbox[1]
-        draw.text((x + (btn_w - w)//2, y_btn + (btn_h - h)//2), text, fill=TEXT, font=font_small)
+        draw.text((x + (btn_w - w)//2, y_btn + (btn_h - h)//2), text, fill=TEXT, font=font_medium)
 
-    # Премиум-метка
-    draw.text((WIDTH - 420, 80), "♛ PREMIUM ACCESS ♛", fill=GOLD, font=font_medium)
+    # Премиум-надпись крупно
+    draw.text((WIDTH//2 - 300, HEIGHT - 120), "♛ PREMIUM ACCESS ONLY ♛", fill=GOLD, font=font_large)
 
     output = BytesIO()
     img.save(output, format="PNG")
@@ -132,6 +128,7 @@ def send_signal(symbol, signal, price, atr, rsi):
     with lock:
         key = f"{symbol}_{signal}"
         if now - state["sent_signals"].get(key, 0) < 3600:
+            logger.info(f"Антиспам: {symbol} {signal} недавно отправлен")
             return
         state["sent_signals"][key] = now
         if symbol not in state["history"]:
@@ -146,10 +143,10 @@ def send_signal(symbol, signal, price, atr, rsi):
     symbol_bin = symbol.replace("/", "")
     markup = types.InlineKeyboardMarkup(row_width=2)
     markup.add(
-        types.InlineKeyboardButton("Spot BUY", url=f"https://www.binance.com/en/trade/{symbol_bin}"),
-        types.InlineKeyboardButton("Spot SELL", url=f"https://www.binance.com/en/trade/{symbol_bin}"),
-        types.InlineKeyboardButton("Futures LONG", url=f"https://www.binance.com/en/futures/{symbol_bin}"),
-        types.InlineKeyboardButton("Futures SHORT", url=f"https://www.binance.com/en/futures/{symbol_bin}"),
+        types.InlineKeyboardButton("Spot BUY", url=f"binance://app/trade?symbol={symbol_bin}"),
+        types.InlineKeyboardButton("Spot SELL", url=f"binance://app/trade?symbol={symbol_bin}"),
+        types.InlineKeyboardButton("Futures LONG", url=f"binance://app/futures/trade?symbol={symbol_bin}"),
+        types.InlineKeyboardButton("Futures SHORT", url=f"binance://app/futures/trade?symbol={symbol_bin}"),
     )
 
     try:
@@ -165,15 +162,16 @@ def safe_fetch_ohlcv(symbol):
     try:
         return exchange.fetch_ohlcv(symbol, "1h", limit=200)
     except ccxt.RateLimitExceeded:
+        logger.warning(f"Rate limit {symbol}, ждём 20 сек")
         time.sleep(20)
         return safe_fetch_ohlcv(symbol)
     except Exception as e:
         logger.error(f"{symbol} fetch error: {e}")
         return None
 
-# Анализ
+# Анализ рынка
 def analyze_market():
-    logger.info("Начало анализа...")
+    logger.info("Начало цикла анализа...")
     for symbol in SYMBOLS_TO_SCAN:
         try:
             bars = safe_fetch_ohlcv(symbol)
@@ -197,7 +195,9 @@ def analyze_market():
             logger.info(log_msg)
 
             with lock:
-                state["debug_log"].setdefault(symbol, []).append(log_msg)
+                if symbol not in state["debug_log"]:
+                    state["debug_log"][symbol] = []
+                state["debug_log"][symbol].append(log_msg)
                 if len(state["debug_log"][symbol]) > 10:
                     state["debug_log"][symbol].pop(0)
 
@@ -208,14 +208,15 @@ def analyze_market():
 
             time.sleep(0.4)
         except Exception as e:
-            logger.error(f"Анализ {symbol}: {e}")
-    logger.info("Анализ завершён")
+            logger.error(f"Анализ {symbol} ошибка: {e}")
+    logger.info("Цикл анализа завершён")
 
 def loop_analyze():
     while True:
         analyze_market()
         time.sleep(300)
 
+# Flask
 app = Flask(__name__)
 
 @app.route("/")
@@ -224,27 +225,36 @@ def home():
 
 @bot.message_handler(commands=["status"])
 def cmd_status(m):
-    bot.reply_to(m, "🤖 Бот онлайн, сканирует топ-пары")
+    try:
+        bot.reply_to(m, "🤖 Бот онлайн, сканирует топ-пары")
+    except Exception as e:
+        logger.error(f"Ошибка /status: {e}")
 
 @bot.message_handler(commands=["report", "history"])
 def cmd_report(m):
-    with lock:
-        if not state["history"]:
-            bot.reply_to(m, "Нет сигналов пока.")
-        else:
-            text = "Последние сигналы:\n"
-            for sym, hist in state["history"].items():
-                last = hist[-1]
-                text += f"{sym} → {last['signal']} @ {last['entry']}\n"
-            bot.reply_to(m, text)
+    try:
+        with lock:
+            if not state["history"]:
+                bot.reply_to(m, "Пока нет сигналов.")
+            else:
+                text = "Последние сигналы:\n"
+                for sym, hist in state["history"].items():
+                    last = hist[-1]
+                    text += f"{sym} → {last['signal']} @ {last['entry']}\n"
+                bot.reply_to(m, text)
+    except Exception as e:
+        logger.error(f"Ошибка /report: {e}")
 
 @bot.message_handler(commands=["debug"])
 def cmd_debug(m):
-    text = "Последние проверки:\n\n"
-    with lock:
-        for sym, logs in list(state["debug_log"].items())[:8]:
-            text += f"🟡 {sym}\n" + "\n".join(logs[-3:]) + "\n\n"
-    bot.reply_to(m, text or "Нет данных.")
+    try:
+        text = "Последние проверки:\n\n"
+        with lock:
+            for sym, logs in list(state["debug_log"].items())[:8]:
+                text += f"🟡 {sym}\n" + "\n".join(logs[-3:]) + "\n\n"
+        bot.reply_to(m, text or "Нет данных отладки.")
+    except Exception as e:
+        logger.error(f"Ошибка /debug: {e}")
 
 if __name__ == "__main__":
     Thread(target=loop_analyze, daemon=True).start()
