@@ -30,6 +30,7 @@ state = {
     "debug_log": {}
 }
 
+# Топ-пары
 SYMBOLS_TO_SCAN = [
     'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT',
     'ADA/USDT', 'DOGE/USDT', 'AVAX/USDT', 'SHIB/USDT', 'LINK/USDT',
@@ -43,7 +44,7 @@ SYMBOLS_TO_SCAN = [
     'BCH/USDT', 'THETA/USDT', 'FTM/USDT', 'STX/USDT', 'ATOM/USDT',
 ]
 
-# Картинка — график в стиле твоего примера
+# Картинка — график в стиле твоего примера (бары + круговая диаграмма)
 def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
     WIDTH, HEIGHT = 1024, 1024
     
@@ -91,12 +92,13 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     output.seek(0)
     return output
 
-# Отправка сигнала — картинка + отдельный текст со списком + кнопки https
+# Отправка сигнала — картинка + текст со списком параметров + кнопки
 def send_signal(symbol, signal, price, atr, rsi):
     now = time.time()
     with lock:
         key = f"{symbol}_{signal}"
         if now - state["sent_signals"].get(key, 0) < 3600:
+            logger.info(f"Антиспам: {symbol} {signal} недавно отправлен")
             return
         state["sent_signals"][key] = now
         if symbol not in state["history"]:
@@ -117,7 +119,7 @@ def send_signal(symbol, signal, price, atr, rsi):
         types.InlineKeyboardButton("Futures SHORT", url=f"https://www.binance.com/en/futures/{symbol_bin}"),
     )
 
-    # Отдельный текст с полным списком параметров под картинкой
+    # Отдельный текст со списком параметров под картинкой
     params_text = (
         f"🔔 PREMIUM {signal} {symbol}\n\n"
         f"Entry: {entry:.4f}\n"
@@ -127,11 +129,8 @@ def send_signal(symbol, signal, price, atr, rsi):
         f"SL: {sl:.4f}\n"
         f"RSI: {round(rsi, 2)}\n"
         f"ATR: {round(atr, 4)}\n"
-        f"TF: {tf}\n"
-        f"R/R: {rr}\n\n"
-        f"Открыть в приложении Binance (скопируй и вставь в браузер):\n"
-        f"Spot: binance://app/trade?symbol={symbol_bin}\n"
-        f"Futures: binance://app/futures/trade?symbol={symbol_bin}"
+        f"TF: 1h\n"
+        f"R/R: 1:2+"
     )
 
     try:
@@ -155,8 +154,9 @@ def safe_fetch_ohlcv(symbol):
         logger.error(f"{symbol} fetch error: {e}")
         return None
 
-# Анализ
+# Анализ рынка — добавлен tf = "1h" для избежания ошибок
 def analyze_market():
+    tf = "1h"  # фиксируем timeframe здесь
     logger.info("Начало цикла анализа...")
     for symbol in SYMBOLS_TO_SCAN:
         try:
