@@ -13,7 +13,7 @@ from io import BytesIO
 
 # Настройки
 TOKEN = "8758242353:AAG5DoNU8Im5TXaXFeeWgHSj1_nSB4OwblI"
-CHAT_ID = "737143225"  # ← твой ID, который подтвердил @username_to_id_bot
+CHAT_ID = "737143225"  # твой ID
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ lock = Lock()
 state = {
     "sent_signals": {},
     "history": {},
-    "debug_log": {}  # последние проверки для /debug
+    "debug_log": {}
 }
 
 # Топ-пары
@@ -44,28 +44,89 @@ SYMBOLS_TO_SCAN = [
     'BCH/USDT', 'THETA/USDT', 'FTM/USDT', 'STX/USDT', 'ATOM/USDT',
 ]
 
+# VIP-картинка — Gold Premium
 def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
-    WIDTH, HEIGHT = 800, 800
-    BG = (20, 20, 20)
-    TEXT = (240, 240, 240)
-    HL = (0, 200, 0) if signal == "BUY" else (220, 50, 50)
+    WIDTH, HEIGHT = 1024, 1024
+    BG_COLOR = (15, 15, 20)          # почти чёрный
+    GOLD = (255, 215, 0)             # классическое золото
+    DARK_GOLD = (184, 134, 11)       # для теней/обводки
+    TEXT_COLOR = (240, 240, 240)     # светло-серый/белый
+    BORDER_COLOR = GOLD
 
-    img = Image.new("RGB", (WIDTH, HEIGHT), BG)
+    img = Image.new("RGB", (WIDTH, HEIGHT), BG_COLOR)
     draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default()
 
-    draw.text((40, 40), f"{signal} {symbol}", fill=HL, font=font)
-    y = 120
-    for k, v in {"Entry": entry, "TP1": tp1, "TP2": tp2, "TP3": tp3, "SL": sl,
-                 "RSI": rsi, "ATR": atr, "TF": tf, "R/R": rr}.items():
-        draw.text((40, y), f"{k}: {v}", fill=TEXT, font=font)
-        y += 50
+    font_large = ImageFont.load_default()
+    font_medium = ImageFont.load_default()
+    font_small = ImageFont.load_default()
+
+    # Золотая рамка по всему изображению
+    border_width = 8
+    draw.rectangle(
+        [border_width, border_width, WIDTH - border_width, HEIGHT - border_width],
+        outline=BORDER_COLOR,
+        width=border_width
+    )
+
+    # Заголовок PREMIUM + сигнал
+    title = f"PREMIUM {signal}"
+    draw.text((100, 100), title, fill=GOLD, font=font_large)
+
+    # Название пары
+    draw.text((100, 180), f"{symbol} VIP SIGNAL", fill=TEXT_COLOR, font=font_large)
+
+    # Основные параметры
+    y = 280
+    data = {
+        "Entry": entry,
+        "TP1": tp1,
+        "TP2": tp2,
+        "TP3": tp3,
+        "SL": sl,
+        "RSI": round(rsi, 2),
+        "ATR": round(atr, 4),
+        "TF": tf,
+        "R/R": rr,
+    }
+    for key, value in data.items():
+        draw.text((100, y), f"{key}: {value}", fill=TEXT_COLOR, font=font_medium)
+        y += 70
+
+    # Кнопки внизу (золотые)
+    buttons = ["Spot BUY", "Spot SELL", "Futures LONG", "Futures SHORT"]
+    button_width = 220
+    button_height = 80
+    gap = 30
+    y_button = HEIGHT - 220
+
+    for i, btn_text in enumerate(buttons):
+        x = 100 + i * (button_width + gap)
+        # Золотой фон для активной кнопки
+        btn_color = GOLD if (("BUY" in btn_text and signal == "BUY") or ("SELL" in btn_text and signal == "SELL")) else (60, 60, 60)
+        draw.rectangle(
+            [x, y_button, x + button_width, y_button + button_height],
+            fill=btn_color,
+            outline=DARK_GOLD,
+            width=3
+        )
+        # Текст кнопки чёрный на золотом
+        w, h = draw.textsize(btn_text, font=font_small)
+        draw.text(
+            (x + (button_width - w) // 2, y_button + (button_height - h) // 2),
+            btn_text,
+            fill=(0, 0, 0),
+            font=font_small
+        )
+
+    # Премиум-метка с короной в правом верхнем углу
+    draw.text((WIDTH - 380, 100), "♛ PREMIUM ACCESS ♛", fill=GOLD, font=font_medium)
 
     output = BytesIO()
     img.save(output, format="PNG")
     output.seek(0)
     return output
 
+# Отправка сигнала
 def send_signal(symbol, signal, price, atr, rsi):
     now = time.time()
     with lock:
@@ -100,6 +161,7 @@ def send_signal(symbol, signal, price, atr, rsi):
     except Exception as e:
         logger.error(f"Ошибка отправки сигнала {symbol}: {e}")
 
+# Безопасный fetch
 def safe_fetch_ohlcv(symbol):
     try:
         return exchange.fetch_ohlcv(symbol, "1h", limit=200)
@@ -111,6 +173,7 @@ def safe_fetch_ohlcv(symbol):
         logger.error(f"{symbol} fetch error: {e}")
         return None
 
+# Анализ рынка
 def analyze_market():
     logger.info("Начало цикла анализа...")
     for symbol in SYMBOLS_TO_SCAN:
@@ -142,7 +205,7 @@ def analyze_market():
                 if len(state["debug_log"][symbol]) > 10:
                     state["debug_log"][symbol].pop(0)
 
-            # Простые условия для теста — сигналы должны появиться
+            # Условия (ослабленные для теста)
             if rsi < 55 and price > ema:
                 send_signal(symbol, "BUY", price, atr, rsi)
             if rsi > 45 and price < ema:
@@ -158,12 +221,14 @@ def loop_analyze():
         analyze_market()
         time.sleep(300)
 
+# Flask
 app = Flask(__name__)
 
 @app.route("/")
 def home():
     return "Бот работает"
 
+# Базовые команды
 @bot.message_handler(commands=["status"])
 def cmd_status(m):
     try:
@@ -197,6 +262,7 @@ def cmd_debug(m):
     except Exception as e:
         logger.error(f"Ошибка /debug: {e}")
 
+# Запуск
 if __name__ == "__main__":
     Thread(target=loop_analyze, daemon=True).start()
     Thread(target=lambda: bot.polling(non_stop=True, interval=3, timeout=30), daemon=True).start()
