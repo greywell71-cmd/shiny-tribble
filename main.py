@@ -44,7 +44,7 @@ SYMBOLS_TO_SCAN = [
     'BCH/USDT', 'THETA/USDT', 'FTM/USDT', 'STX/USDT', 'ATOM/USDT',
 ]
 
-# Картинка — график в стиле твоего примера (бары + круговая диаграмма)
+# Картинка — только график (бары + круговая диаграмма)
 def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
     WIDTH, HEIGHT = 1024, 1024
     
@@ -57,7 +57,7 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     img = Image.new("RGB", (WIDTH, HEIGHT))
     draw = ImageDraw.Draw(img, "RGBA")
 
-    # Градиент
+    # Градиентный фон
     for y in range(HEIGHT):
         r = int(BG_START[0] + (BG_END[0] - BG_START[0]) * y / HEIGHT)
         g = int(BG_START[1] + (BG_END[1] - BG_START[1]) * y / HEIGHT)
@@ -92,7 +92,7 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     output.seek(0)
     return output
 
-# Отправка сигнала — картинка + текст со списком параметров + кнопки
+# Отправка сигнала — картинка + цветной текст с эмодзи
 def send_signal(symbol, signal, price, atr, rsi):
     now = time.time()
     with lock:
@@ -119,24 +119,28 @@ def send_signal(symbol, signal, price, atr, rsi):
         types.InlineKeyboardButton("Futures SHORT", url=f"https://www.binance.com/en/futures/{symbol_bin}"),
     )
 
-    # Отдельный текст со списком параметров под картинкой
+    # Цветной блок с эмодзи
+    bg_color = "#006400" if signal == "BUY" else "#8B0000"  # зелёный / красный
+    emoji = "🚀" if signal == "BUY" else "📉"
     params_text = (
-        f"🔔 PREMIUM {signal} {symbol}\n\n"
-        f"Entry: {entry:.4f}\n"
-        f"TP1: {tp1:.4f}\n"
-        f"TP2: {tp2:.4f}\n"
-        f"TP3: {tp3:.4f}\n"
-        f"SL: {sl:.4f}\n"
-        f"RSI: {round(rsi, 2)}\n"
-        f"ATR: {round(atr, 4)}\n"
-        f"TF: 1h\n"
-        f"R/R: 1:2+"
+        f"<b>🔔 PREMIUM {signal} {symbol} {emoji}</b>\n\n"
+        f"<div style='background-color:{bg_color}; color:white; padding:16px; border-radius:12px; font-size:16px; line-height:1.6;'>"
+        f"<b>Entry:</b> {entry:.4f}\n"
+        f"<b>TP1 ↑:</b> {tp1:.4f}\n"
+        f"<b>TP2 ↑:</b> {tp2:.4f}\n"
+        f"<b>TP3 ↑:</b> {tp3:.4f}\n"
+        f"<b>SL ↓:</b> {sl:.4f}\n"
+        f"<b>💹 RSI:</b> {round(rsi, 2)}\n"
+        f"<b>💹 ATR:</b> {round(atr, 4)}\n"
+        f"<b>⏱️ TF:</b> 1h\n"
+        f"<b>⚖️ R/R:</b> 1:2+"
+        f"</div>"
     )
 
     try:
         img = generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, round(rsi,1), round(atr,4), "1h", "1:2+")
         bot.send_photo(CHAT_ID, photo=img)
-        bot.send_message(CHAT_ID, params_text, reply_markup=markup)
+        bot.send_message(CHAT_ID, params_text, parse_mode="HTML", reply_markup=markup)
         state["history"][symbol].append({"signal": signal, "entry": entry, "time": now})
         logger.info(f"Сигнал отправлен: {symbol} {signal}")
     except Exception as e:
@@ -154,9 +158,9 @@ def safe_fetch_ohlcv(symbol):
         logger.error(f"{symbol} fetch error: {e}")
         return None
 
-# Анализ рынка — добавлен tf = "1h" для избежания ошибок
+# Анализ рынка
 def analyze_market():
-    tf = "1h"  # фиксируем timeframe здесь
+    tf = "1h"
     logger.info("Начало цикла анализа...")
     for symbol in SYMBOLS_TO_SCAN:
         try:
