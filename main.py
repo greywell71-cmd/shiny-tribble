@@ -30,7 +30,6 @@ state = {
     "debug_log": {}
 }
 
-# Топ-пары
 SYMBOLS_TO_SCAN = [
     'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT',
     'ADA/USDT', 'DOGE/USDT', 'AVAX/USDT', 'SHIB/USDT', 'LINK/USDT',
@@ -44,7 +43,7 @@ SYMBOLS_TO_SCAN = [
     'BCH/USDT', 'THETA/USDT', 'FTM/USDT', 'STX/USDT', 'ATOM/USDT',
 ]
 
-# Картинка — график в стиле твоего примера (бары + круговая диаграмма)
+# Картинка — график в стиле твоего примера
 def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr):
     WIDTH, HEIGHT = 1024, 1024
     
@@ -57,7 +56,7 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     img = Image.new("RGB", (WIDTH, HEIGHT))
     draw = ImageDraw.Draw(img, "RGBA")
 
-    # Градиентный фон
+    # Градиент
     for y in range(HEIGHT):
         r = int(BG_START[0] + (BG_END[0] - BG_START[0]) * y / HEIGHT)
         g = int(BG_START[1] + (BG_END[1] - BG_START[1]) * y / HEIGHT)
@@ -71,7 +70,6 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     title = f"PREMIUM {signal} {symbol}"
     draw.text((80, 40), title, fill=GOLD, font=font_large)
 
-    # ВЫДЕЛЕННЫЙ ГРАФИК — центр картинки
     # Бар-чарт
     bar_y = 200
     bar_heights = [500, 650, 800, 950, 1100]
@@ -81,7 +79,7 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
         color = ACCENT if i % 2 == 0 else (200, 150, 50)
         draw.rectangle([bar_x + i*140, bar_y - h, bar_x + i*140 + 100, bar_y], fill=color, outline=GOLD, width=8)
 
-    # Круговая диаграмма — крупная справа
+    # Круговая диаграмма
     circle_x, circle_y = WIDTH - 450, 250
     draw.ellipse([circle_x, circle_y, circle_x+350, circle_y+350], outline=GOLD, width=10)
     draw.pieslice([circle_x, circle_y, circle_x+350, circle_y+350], 0, 170, fill=ACCENT)
@@ -93,13 +91,12 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     output.seek(0)
     return output
 
-# Отправка сигнала — картинка + отдельный текст со списком параметров
+# Отправка сигнала — картинка + отдельный текст со списком + кнопки https
 def send_signal(symbol, signal, price, atr, rsi):
     now = time.time()
     with lock:
         key = f"{symbol}_{signal}"
         if now - state["sent_signals"].get(key, 0) < 3600:
-            logger.info(f"Антиспам: {symbol} {signal} недавно отправлен")
             return
         state["sent_signals"][key] = now
         if symbol not in state["history"]:
@@ -120,7 +117,7 @@ def send_signal(symbol, signal, price, atr, rsi):
         types.InlineKeyboardButton("Futures SHORT", url=f"https://www.binance.com/en/futures/{symbol_bin}"),
     )
 
-    # Полный список параметров — отдельно текстом под картинкой
+    # Отдельный текст с полным списком параметров под картинкой
     params_text = (
         f"🔔 PREMIUM {signal} {symbol}\n\n"
         f"Entry: {entry:.4f}\n"
@@ -131,7 +128,10 @@ def send_signal(symbol, signal, price, atr, rsi):
         f"RSI: {round(rsi, 2)}\n"
         f"ATR: {round(atr, 4)}\n"
         f"TF: {tf}\n"
-        f"R/R: {rr}"
+        f"R/R: {rr}\n\n"
+        f"Открыть в приложении Binance (скопируй и вставь в браузер):\n"
+        f"Spot: binance://app/trade?symbol={symbol_bin}\n"
+        f"Futures: binance://app/futures/trade?symbol={symbol_bin}"
     )
 
     try:
@@ -155,7 +155,7 @@ def safe_fetch_ohlcv(symbol):
         logger.error(f"{symbol} fetch error: {e}")
         return None
 
-# Анализ рынка
+# Анализ
 def analyze_market():
     logger.info("Начало цикла анализа...")
     for symbol in SYMBOLS_TO_SCAN:
