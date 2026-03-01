@@ -71,7 +71,7 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     title = f"PREMIUM {signal} {symbol}"
     draw.text((80, 40), title, fill=GOLD, font=font_large)
 
-    # Бар-чарт
+    # Бар-чарт — выделенный
     bar_y = 200
     bar_heights = [500, 650, 800, 950, 1100]
     bar_x = 80
@@ -80,7 +80,7 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
         color = ACCENT if i % 2 == 0 else (200, 150, 50)
         draw.rectangle([bar_x + i*140, bar_y - h, bar_x + i*140 + 100, bar_y], fill=color, outline=GOLD, width=8)
 
-    # Круговая диаграмма
+    # Круговая диаграмма — крупная
     circle_x, circle_y = WIDTH - 450, 250
     draw.ellipse([circle_x, circle_y, circle_x+350, circle_y+350], outline=GOLD, width=10)
     draw.pieslice([circle_x, circle_y, circle_x+350, circle_y+350], 0, 170, fill=ACCENT)
@@ -160,7 +160,7 @@ def safe_fetch_ohlcv(symbol):
 
 # Анализ рынка
 def analyze_market():
-    tf = "1h"
+    tf = "1h"  # явно фиксируем, чтобы не было ошибок
     logger.info("Начало цикла анализа...")
     for symbol in SYMBOLS_TO_SCAN:
         try:
