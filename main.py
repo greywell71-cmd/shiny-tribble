@@ -56,13 +56,14 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     img = Image.new("RGB", (WIDTH, HEIGHT))
     draw = ImageDraw.Draw(img, "RGBA")
 
+    # Градиентный фон
     for y in range(HEIGHT):
         r = int(BG_START[0] + (BG_END[0] - BG_START[0]) * y / HEIGHT)
         g = int(BG_START[1] + (BG_END[1] - BG_START[1]) * y / HEIGHT)
         b = int(BG_START[2] + (BG_END[2] - BG_START[2]) * y / HEIGHT)
         draw.line([(0, y), (WIDTH, y)], fill=(r, g, b))
 
-    font_large  = ImageFont.load_default()
+    font_large = ImageFont.load_default()
     font_medium = ImageFont.load_default()
 
     title = f"PREMIUM {signal} {symbol}"
@@ -87,7 +88,7 @@ def generate_vip_png(symbol, signal, entry, tp1, tp2, tp3, sl, rsi, atr, tf, rr)
     output.seek(0)
     return output
 
-# Отправка сигнала — картинка + цветной текст с эмодзи и ссылками
+# Отправка сигнала — картинка + цветной текст с эмодзи и ссылками (без кнопок!)
 def send_signal(symbol, signal, price, atr, rsi):
     now = time.time()
     with lock:
@@ -107,7 +108,7 @@ def send_signal(symbol, signal, price, atr, rsi):
 
     symbol_bin = symbol.replace("/", "")
 
-    # Цветной выделенный текст с эмодзи
+    # Цветной блок с эмодзи и выделением
     bg_color = "#006400" if signal == "BUY" else "#8B0000"
     emoji = "🚀" if signal == "BUY" else "📉"
     params_text = (
@@ -172,6 +173,7 @@ def analyze_market():
             atr = df['atr'].iloc[-1]
 
             if pd.isna(rsi) or pd.isna(ema) or pd.isna(atr):
+                logger.warning(f"{symbol} - NaN в индикаторах, пропускаем")
                 continue
 
             log_msg = f"{symbol} | RSI={rsi:.1f} | Price={price:.4f} | EMA={ema:.4f} | ATR={atr:.4f}"
