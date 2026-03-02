@@ -159,9 +159,15 @@ app = Flask(__name__)
 def home(): return "Бот Активен"
 
 if __name__ == "__main__":
-    # Поток для логики анализа
+    # 1. Запускаем поток анализа рынка
     Thread(target=loop_analyze, daemon=True).start()
-    # Запуск бота (Flask не запускаем явно, Render сам подхватит gunicorn, если он прописан)
-    logger.info("Бот запущен...")
-    bot.infinity_polling(timeout=20, long_polling_timeout=10)
+    
+    # 2. Запускаем Telegram бота в отдельном потоке
+    Thread(target=lambda: bot.infinity_polling(timeout=20, long_polling_timeout=10), daemon=True).start()
+    
+    # 3. Запускаем Flask на порту от Render (ЭТО ГЛАВНОЕ)
+    port = int(os.environ.get("PORT", 5000))
+    logger.info(f"Запуск веб-сервера на порту {port}...")
+    app.run(host="0.0.0.0", port=port)
+    
     
