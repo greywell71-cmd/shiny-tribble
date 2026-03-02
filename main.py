@@ -14,7 +14,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # --- НАСТРОЙКИ ---
-TOKEN = "8758242353:AAH0qvtMx2VJXHMJyH1LhaLssge97boHwaA" 
+TOKEN = "8758242353:AAFi-6vGtHgQoOUsWcN3XaLBAtjh6SHaxac" 
 CHAT_ID = "737143225"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
