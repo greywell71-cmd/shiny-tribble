@@ -14,7 +14,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 # --- НАСТРОЙКИ ---
-TOKEN = "8758242353:AAFi-6vGtHgQoOUsWcN3XaLBAtjh6SHaxac" 
+TOKEN = os.environ.get("8758242353:AAFi-6vGtHgQoOUsWcN3XaLBAtjh6SHaxac")
 CHAT_ID = "737143225"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -26,7 +26,7 @@ if not TOKEN or ":" not in TOKEN:
 
 bot = telebot.TeleBot(TOKEN)
 
-# Настройка подключения к Binance с лимиттером
+# Настройка Binance с защитой от спама
 exchange = ccxt.binance({
     "enableRateLimit": True, 
     "timeout": 30000,
@@ -35,17 +35,14 @@ exchange = ccxt.binance({
 
 lock = Lock()
 state = {"sent_signals": {}}
-
 SYMBOLS_TO_SCAN = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'ADA/USDT']
 
 def generate_vip_png(symbol, df, signal, entry, tp1, tp2, tp3, sl):
     try:
         plot_df = df.tail(40).copy()
         plot_df.index = pd.to_datetime(plot_df.index)
-
         colors = mpf.make_marketcolors(up='#00ff88', down='#ff3355', wick='inherit', edge='inherit', volume='in')
         s = mpf.make_mpf_style(base_mpf_style='nightclouds', marketcolors=colors, facecolor='#050519', figcolor='#050519')
-
         levels = [entry, tp1, tp2, tp3, sl]
         level_colors = ['#0088ff', '#00ff00', '#00ee00', '#00cc00', '#ff0000']
         
@@ -57,7 +54,7 @@ def generate_vip_png(symbol, df, signal, entry, tp1, tp2, tp3, sl):
             figsize=(12, 8), savefig=buf, returnfig=True
         )
         buf.seek(0)
-        plt.close(fig) # Очистка памяти
+        plt.close(fig) 
         return buf
     except Exception as e:
         logger.error(f"Ошибка отрисовки {symbol}: {e}")
@@ -68,20 +65,14 @@ def send_signal(symbol, df, signal, price, atr, rsi):
     now = time.time()
     with lock:
         key = f"{symbol}_{signal}"
-        # Не спамим: одна и та же монета не чаще чем раз в 2 часа
         if now - state["sent_signals"].get(key, 0) < 7200: return
         state["sent_signals"][key] = now
 
-    entry = round(price, 4)
-    mul = 1 if signal == "BUY" else -1
+    entry, mul = round(price, 4), (1 if signal == "BUY" else -1)
     tp1, tp2, tp3 = round(price + atr*mul, 4), round(price + (atr*1.5)*mul, 4), round(price + (atr*2.5)*mul, 4)
     sl = round(price - (atr*1.2)*mul, 4)
 
-    # Эмодзи-оформление
-    if signal == "BUY":
-        m_emoji, t_emoji, dot = "🚀", "📈", "🟢"
-    else:
-        m_emoji, t_emoji, dot = "📉", "📉", "🔴"
+    m_emoji, t_emoji, dot = ("🚀", "📈", "🟢") if signal == "BUY" else ("📉", "📉", "🔴")
     
     params_text = (
         f"{m_emoji} <b>PREMIUM SIGNAL: {symbol}</b> {m_emoji}\n"
@@ -109,18 +100,14 @@ def send_signal(symbol, df, signal, price, atr, rsi):
         logger.error(f"Telegram error {symbol}: {e}")
 
 def analyze_market():
-    logger.info(">>> Запуск сканирования...")
+    logger.info(">>> Цикл сканирования запущен...")
     for symbol in SYMBOLS_TO_SCAN:
         try:
-            # 1. ПАУЗА 10 СЕКУНД (чтобы Binance не забанил за спам)
-            time.sleep(10) 
-            
+            time.sleep(12) # Защита от бана 418
             bars = exchange.fetch_ohlcv(symbol, "1h", limit=250)
             if not bars: continue
 
             df = pd.DataFrame(bars, columns=['Date', 'Open', 'High', 'Low', 'Close', 'Volume'])
-            df['Date'] = pd.to_datetime(df['Date'], unit='ms')
-            
             rsi = ta.rsi(df['Close'], length=14).iloc[-1]
             ema = ta.ema(df['Close'], length=200).iloc[-1]
             atr = ta.atr(df['High'], df['Low'], df['Close'], length=14).iloc[-1]
@@ -128,46 +115,48 @@ def analyze_market():
 
             if pd.isna(rsi) or pd.isna(ema): continue
 
-            df_for_plot = df.set_index('Date')
-
-            # Уровни RSI 35/65 более надежны для Render-бота
             if rsi < 35 and price > ema:
-                send_signal(symbol, df_for_plot, "BUY", price, atr, rsi)
+                send_signal(symbol, df.set_index(pd.to_datetime(df['Date'], unit='ms')), "BUY", price, atr, rsi)
             elif rsi > 65 and price < ema:
-                send_signal(symbol, df_for_plot, "SELL", price, atr, rsi)
+                send_signal(symbol, df.set_index(pd.to_datetime(df['Date'], unit='ms')), "SELL", price, atr, rsi)
 
         except ccxt.DDoSProtection:
-            logger.error("БАН 418! Binance ограничил IP. Спим 15 минут...")
+            logger.error("БАН 418! Спим 15 минут...")
             time.sleep(900)
             return 
         except Exception as e:
             logger.error(f"Ошибка {symbol}: {e}")
-            time.sleep(5)
 
 def loop_analyze():
     while True:
         try:
             analyze_market()
-            # Отдыхаем 15 минут между кругами сканирования
-            time.sleep(900) 
+            time.sleep(600) 
         except Exception as e:
-            logger.error(f"Цикл упал: {e}")
+            logger.error(f"Ошибка цикла: {e}")
             time.sleep(60)
 
+# --- WEB SERVER & BOT START ---
 app = Flask(__name__)
 @app.route("/")
-def home(): return "Бот Активен"
+def home(): return "Бот работает"
 
 if __name__ == "__main__":
-    # 1. Запускаем поток анализа рынка
+    # Фоновые задачи
     Thread(target=loop_analyze, daemon=True).start()
     
-    # 2. Запускаем Telegram бота в отдельном потоке
-    Thread(target=lambda: bot.infinity_polling(timeout=20, long_polling_timeout=10), daemon=True).start()
+    def start_bot():
+        while True:
+            try:
+                logger.info("Запуск Telegram Polling...")
+                bot.infinity_polling(timeout=20, long_polling_timeout=10)
+            except Exception as e:
+                logger.error(f"Конфликт или ошибка бота: {e}")
+                time.sleep(20) # Пауза перед перезапуском при ошибке 409
+
+    Thread(target=start_bot, daemon=True).start()
     
-    # 3. Запускаем Flask на порту от Render (ЭТО ГЛАВНОЕ)
+    # Основной поток для Render (решает ошибку порта)
     port = int(os.environ.get("PORT", 5000))
-    logger.info(f"Запуск веб-сервера на порту {port}...")
     app.run(host="0.0.0.0", port=port)
-    
-    
+            
