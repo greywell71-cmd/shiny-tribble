@@ -1,8 +1,7 @@
-pyTelegramBotAPI
-ccxt
-pandas
-pandas_ta
-mplfinance
-flask
-requests
-gunicorn
+pyTelegramBotAPI==4.21.0
+ccxt==4.2.40
+pandas==2.1.4
+pandas_ta==0.3.14b0
+flask==3.0.0
+mplfinance==0.12.10b0
+matplotlib==3.8.2
